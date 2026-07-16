@@ -8,6 +8,7 @@ import SwiftUI
 struct TodayView: View {
     @Binding var showRecording: Bool
     @State private var showBrief = false
+    @State private var showTextEntry = false
     let todayEntry = mockEntries[0]
 
     var body: some View {
@@ -59,7 +60,9 @@ struct TodayView: View {
                         }
                         .buttonStyle(ScaleButtonStyle())
 
-                        Button {} label: {
+                        Button {
+                            showTextEntry = true
+                        } label: {
                             HStack(spacing: 10) {
                                 ZStack {
                                     Circle()
@@ -204,6 +207,9 @@ struct TodayView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showTextEntry) {
+            TextEntryView()
         }
     }
 

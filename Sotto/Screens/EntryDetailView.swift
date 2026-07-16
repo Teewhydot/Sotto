@@ -7,10 +7,14 @@ import SwiftUI
 
 struct EntryDetailView: View {
     let entry: MockEntry
+    @Environment(\.dismiss) var dismiss
     @State private var showFullTranscript = false
     @State private var showObservation = false
     @State private var userNote = ""
     @State private var isFavourite: Bool
+    @State private var showRecording = false
+    @State private var showShareSheet = false
+    @State private var showDeleteAlert = false
 
     init(entry: MockEntry) {
         self.entry = entry
@@ -101,7 +105,9 @@ struct EntryDetailView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .lineSpacing(3)
 
-                        Button {} label: {
+                        Button {
+                            showRecording = true
+                        } label: {
                             Label("Respond to this", systemImage: "arrow.turn.down.right")
                                 .font(.caption).fontWeight(.semibold)
                                 .foregroundStyle(Color.sottoAccent)
@@ -212,17 +218,35 @@ struct EntryDetailView: View {
                 }
 
                 Menu {
-                    Button {} label: {
+                    Button {
+                        showShareSheet = true
+                    } label: {
                         Label("Share Transcript", systemImage: "square.and.arrow.up")
                     }
                     Divider()
-                    Button(role: .destructive) {} label: {
+                    Button(role: .destructive) {
+                        showDeleteAlert = true
+                    } label: {
                         Label("Delete Entry", systemImage: "trash")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showRecording) {
+            RecordingView()
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: [entry.transcript])
+        }
+        .alert("Delete Entry?", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                dismiss()
+            }
+        } message: {
+            Text("This entry will be permanently deleted.")
         }
     }
 }

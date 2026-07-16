@@ -14,6 +14,8 @@ struct SettingsView: View {
 
     @State private var showResetAlert = false
     @State private var showExportSheet = false
+    @State private var showPrivacyPolicy = false
+    @State private var showReviewAlert = false
 
     var body: some View {
         NavigationStack {
@@ -112,7 +114,9 @@ struct SettingsView: View {
                             .font(.subheadline).foregroundStyle(Color(hex: "#10B981"))
                     }
 
-                    Button {} label: {
+                    Button {
+                        showExportSheet = true
+                    } label: {
                         Label("Export all entries", systemImage: "square.and.arrow.up")
                             .foregroundStyle(Color.sottoAccent)
                     }
@@ -127,12 +131,16 @@ struct SettingsView: View {
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
 
-                    Button {} label: {
+                    Button {
+                        showPrivacyPolicy = true
+                    } label: {
                         Label("Privacy Policy", systemImage: "hand.raised")
                             .foregroundStyle(.primary)
                     }
 
-                    Button {} label: {
+                    Button {
+                        showReviewAlert = true
+                    } label: {
                         Label("Write a review", systemImage: "star.fill")
                             .foregroundStyle(.primary)
                     }
@@ -161,6 +169,17 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will permanently erase every journal entry and insight. This cannot be undone.")
+            }
+            .alert("Redirect to App Store", isPresented: $showReviewAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("This would normally open the App Store review page.")
+            }
+            .sheet(isPresented: $showExportSheet) {
+                ShareSheet(items: ["Date,Emotion,Transcript\n2026-07-16,Positive,Sample transcript data..."])
+            }
+            .sheet(isPresented: $showPrivacyPolicy) {
+                SafariView(url: URL(string: "https://apple.com/privacy")!)
             }
         }
     }

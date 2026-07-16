@@ -8,6 +8,8 @@ import SwiftUI
 struct HistoryView: View {
     @State private var searchText = ""
     @State private var selectedFilter = "All"
+    @State private var showDeleteAlert = false
+    @State private var showFavouriteAlert = false
     let filters = ["All", "Voice", "Text", "Favourites"]
 
     var filteredEntries: [MockEntry] {
@@ -95,13 +97,17 @@ struct HistoryView: View {
                                     EntryRowView(entry: entry)
                                 }
                                 .swipeActions(edge: .leading) {
-                                    Button {} label: {
+                                    Button {
+                                        showFavouriteAlert = true
+                                    } label: {
                                         Label("Favourite", systemImage: "heart.fill")
                                     }
                                     .tint(.red)
                                 }
                                 .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {} label: {
+                                    Button(role: .destructive) {
+                                        showDeleteAlert = true
+                                    } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
                                 }
@@ -117,6 +123,15 @@ struct HistoryView: View {
             .listStyle(.plain)
             .navigationTitle("Entries")
             .searchable(text: $searchText, prompt: "Search entries…")
+            .alert("Delete Entry?", isPresented: $showDeleteAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) { }
+            } message: {
+                Text("This entry will be permanently deleted.")
+            }
+            .alert("Added to Favourites", isPresented: $showFavouriteAlert) {
+                Button("OK", role: .cancel) { }
+            }
         }
     }
 }
