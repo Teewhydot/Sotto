@@ -5,28 +5,65 @@
 
 import SwiftUI
 
+import SwiftData
+
 struct TodayView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \JournalEntry.date, order: .reverse) private var entries: [JournalEntry]
+    
     @Binding var showRecording: Bool
     @State private var showBrief = false
     @State private var showTextEntry = false
-    let todayEntry = mockEntries[0]
-
+    
+    var todayEntry: JournalEntry? {
+        entries.first { Calendar.current.isDateInToday($0.date) }
+    }
+    
+    var currentStreak: Int {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let dates = Set(entries.map { calendar.startOfDay(for: $0.date) }).sorted(by: >)
+        guard !dates.isEmpty else { return 0 }
+        var streak = 0
+        var expectedDate = startOfToday
+        if !dates.contains(startOfToday) {
+            if dates.contains(calendar.date(byAdding: .day, value: -1, to: startOfToday)!) {
+                expectedDate = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
+            } else {
+                return 0
+            }
+        }
+        for date in dates {
+            if date == expectedDate {
+                streak += 1
+                expectedDate = calendar.date(byAdding: .day, value: -1, to: expectedDate)!
+            } else { break }
+        }
+        return streak
+    }
+    
+    var entriesThisWeek: Int {
+        let calendar = Calendar.current
+        guard let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) else { return 0 }
+        return entries.filter { $0.date >= startOfWeek }.count
+    }
+    
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-
+                    
                     // ── Date & greeting ──────────────────────────────────────
                     VStack(alignment: .leading, spacing: 6) {
                         Text(Date(), format: .dateTime.weekday(.wide).month(.wide).day())
                             .font(.title2).fontWeight(.semibold).fontDesign(.rounded)
-
+                        
                         Text(greetingText())
                             .font(.body).fontDesign(.rounded)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.top, 8)
-
+                    
                     // ── CTA cards ───────────────────────────────────────────
                     VStack(spacing: 10) {
                         Button { showRecording = true } label: {
@@ -51,15 +88,15 @@ struct TodayView: View {
                             .padding(.vertical, 16)
                             .background(
                                 LinearGradient(
-                                    colors: [Color(hex: "#6366F1"), Color(hex: "#4338CA")],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                                    colors: [Color.sottoAccent, Color(hex: "#F2CC8F")],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
                                 ),
                                 in: RoundedRectangle(cornerRadius: 14)
                             )
                         }
                         .buttonStyle(ScaleButtonStyle())
-
+                        
                         Button {
                             showTextEntry = true
                         } label: {
@@ -86,191 +123,207 @@ struct TodayView: View {
                         }
                         .buttonStyle(ScaleButtonStyle())
                     }
-
+                    
                     // ── Today's entry ────────────────────────────────────────
                     VStack(alignment: .leading, spacing: 10) {
                         SectionLabel(text: "Today's Entry")
-
-                        NavigationLink(destination: EntryDetailView(entry: todayEntry)) {
-                            SottoCard {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    HStack(alignment: .center) {
-                                        EmotionBadge(
-                                            emotion: todayEntry.primaryEmotion,
-                                            color: todayEntry.emotionColor
-                                        )
-                                        Spacer()
-                                        Label(todayEntry.duration, systemImage: "clock")
-                                            .font(.caption2).foregroundStyle(.tertiary)
-                                    }
-
-                                    Text(String(todayEntry.transcript.prefix(120)) + "…")
-                                        .font(.callout).fontDesign(.serif)
-                                        .foregroundStyle(.secondary)
-                                        .lineSpacing(4)
-                                        .multilineTextAlignment(.leading)
-
-                                    // Theme chips
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        HStack(spacing: 6) {
-                                            ForEach(todayEntry.themes.prefix(3), id: \.self) { theme in
-                                                ThemeChip(label: theme)
+                        
+                        if let entry = todayEntry {
+                            NavigationLink(destination: EntryDetailView(entry: entry)) {
+                                SottoCard {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        HStack(alignment: .center) {
+                                            EmotionBadge(
+                                                emotion: entry.primaryEmotion,
+                                                color: entry.emotionColor
+                                            )
+                                            Spacer()
+                                            Label(entry.duration, systemImage: "clock")
+                                                .font(.caption2).foregroundStyle(.tertiary)
+                                        }
+                                        
+                                        Text(String(entry.transcript.prefix(120)) + "…")
+                                            .font(.callout).fontDesign(.serif)
+                                            .foregroundStyle(.secondary)
+                                            .lineSpacing(4)
+                                            .multilineTextAlignment(.leading)
+                                        
+                                        // Theme chips
+                                        ScrollView(.horizontal, showsIndicators: false) {
+                                            HStack(spacing: 6) {
+                                                ForEach(entry.themes.prefix(3), id: \.self) { theme in
+                                                    ThemeChip(label: theme)
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
+                            .buttonStyle(.plain)
+                        } else {
+                            ContentUnavailableView(
+                                "No Entry Yet",
+                                systemImage: "pencil.and.outline",
+                                description: Text("Start speaking or type an entry to reflect on your day.")
+                            )
+                            .frame(height: 160)
+                            .background(Color.sottoSecondary, in: RoundedRectangle(cornerRadius: 24))
                         }
-                        .buttonStyle(.plain)
                     }
-
+                    
                     // ── Weekly brief ─────────────────────────────────────────
                     VStack(alignment: .leading, spacing: 10) {
                         SectionLabel(text: "This Week's Brief")
-
+                        
                         SottoCard {
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "sparkles")
-                                        .foregroundStyle(Color.sottoAccent)
-                                    Text("Week of \(weekStartString())")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                    Spacer()
-                                    EmotionBadge(
-                                        emotion: mockWeeklyBrief.dominantEmotion,
-                                        color: Color(hex: "#F59E0B")
-                                    )
-                                }
-
-                                Text(
-                                    showBrief
-                                        ? mockWeeklyBrief.narrative
-                                        : String(mockWeeklyBrief.narrative.prefix(90)) + "…"
-                                )
-                                .font(.callout).fontDesign(.rounded)
-                                .foregroundStyle(.primary)
-                                .lineSpacing(4)
-                                .animation(.easeInOut(duration: 0.3), value: showBrief)
-
-                                Button {
-                                    withAnimation { showBrief.toggle() }
-                                } label: {
-                                    Text(showBrief ? "Show less" : "Read more →")
-                                        .font(.caption).fontWeight(.semibold)
-                                        .foregroundStyle(Color.sottoAccent)
-                                }
-
-                                if showBrief {
-                                    Divider()
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        Text(mockWeeklyBrief.patternObservation)
-                                            .font(.caption).fontDesign(.rounded)
-                                            .foregroundStyle(.secondary)
-                                            .lineSpacing(3)
-
-                                        Divider()
-
-                                        Text(mockWeeklyBrief.invitation)
-                                            .font(.callout).fontDesign(.rounded).italic()
-                                            .foregroundStyle(.primary)
-                                            .lineSpacing(3)
+                            if let entry = todayEntry {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "sparkles")
+                                            .foregroundStyle(Color.sottoAccent)
+                                        Text("Reflecting on today")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                        Spacer()
+                                        EmotionBadge(
+                                            emotion: entry.primaryEmotion,
+                                            color: entry.emotionColor
+                                        )
                                     }
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                                    
+                                    Text(entry.summary)
+                                        .font(.callout).fontDesign(.rounded)
+                                        .foregroundStyle(.primary)
+                                        .lineSpacing(5)
+                                        .padding(.bottom, 6)
+
+                                    Button {
+                                        withAnimation { showBrief.toggle() }
+                                    } label: {
+                                        Text(showBrief ? "Show less" : "Read more →")
+                                            .font(.caption).fontWeight(.semibold)
+                                            .foregroundStyle(Color.sottoAccent)
+                                    }
+
+                                    if showBrief {
+                                        Divider()
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Text(entry.hiddenObservation)
+                                                .font(.callout).fontDesign(.rounded)
+                                                .foregroundStyle(.primary)
+                                                .lineSpacing(4)
+
+                                            Divider()
+
+                                            HStack {
+                                                Image(systemName: "lightbulb.fill")
+                                                    .foregroundStyle(Color(hex: "#F59E0B"))
+                                                Text("Invitation")
+                                                    .font(.caption).fontWeight(.semibold)
+                                                    .foregroundStyle(Color(hex: "#F59E0B"))
+                                            }
+                                            Text(entry.followUpQuestion)
+                                                .font(.callout).fontDesign(.rounded).italic()
+                                                .foregroundStyle(.primary)
+                                                .lineSpacing(3)
+                                        }
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                    }
                                 }
+                            } else {
+                                Text("Complete a journal entry today to see your personalized insight here.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 20)
                             }
                         }
                     }
-
-                    // ── Streak / stats strip ─────────────────────────────────
+                        // ── Streak / stats strip ─────────────────────────────────
                     HStack(spacing: 12) {
-                        StatPill(value: "5", label: "This week", icon: "flame.fill", color: Color(hex: "#F97316"))
-                        StatPill(value: "7", label: "Day streak", icon: "bolt.fill", color: Color(hex: "#4F46E5"))
-                        StatPill(value: "32", label: "All entries", icon: "text.bubble.fill", color: Color(hex: "#10B981"))
+                        StatPill(value: "\(entriesThisWeek)", label: "This week", icon: "flame.fill", color: Color(hex: "#F97316"))
+                        StatPill(value: "\(currentStreak)", label: "Day streak", icon: "bolt.fill", color: Color.sottoAccent)
+                        StatPill(value: "\(entries.count)", label: "All entries", icon: "text.bubble.fill", color: Color(hex: "#10B981"))
                     }
-
+                    
                     Spacer(minLength: 100)
                 }
-                .padding(.horizontal, 20)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Text("sotto")
-                        .font(.headline).fontWeight(.bold).fontDesign(.rounded)
-                        .foregroundStyle(Color.sottoAccent)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink(destination: SettingsView()) {
-                        Image(systemName: "line.3.horizontal")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(.primary)
+                        .padding(.horizontal, 20)
+                    }
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            NavigationLink(destination: SettingsView()) {
+                                Image(systemName: "line.3.horizontal")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundStyle(.primary)
+                            }
+                        }
                     }
                 }
+                .sheet(isPresented: $showTextEntry) {
+                    TextEntryView()
+                }
+            }
+            
+            // MARK: - Helpers
+            func greetingText() -> String {
+                let hour = Calendar.current.component(.hour, from: Date())
+                switch hour {
+                case 5..<11: return "Good morning."
+                case 11..<17: return "How's your afternoon?"
+                case 17..<21: return "Good evening."
+                default: return "Still awake."
+                }
+            }
+            
+            func weekStartString() -> String {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "d MMM"
+                guard let weekStart = Calendar.current.date(
+                    from: Calendar.current.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+                ) else { return "" }
+                return formatter.string(from: weekStart)
             }
         }
-        .sheet(isPresented: $showTextEntry) {
-            TextEntryView()
+        
+        // MARK: - Stat pill
+        struct StatPill: View {
+            let value: String
+            let label: String
+            let icon: String
+            let color: Color
+            
+            var body: some View {
+                VStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.caption).foregroundStyle(color)
+                    Text(value)
+                        .font(.title3).fontWeight(.bold).fontDesign(.rounded)
+                    Text(label)
+                        .font(.caption2).fontDesign(.rounded)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.sottoSecondary, in: RoundedRectangle(cornerRadius: 14))
+            }
         }
-    }
-
-    // MARK: - Helpers
-    func greetingText() -> String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        switch hour {
-        case 5..<11: return "Good morning."
-        case 11..<17: return "How's your afternoon?"
-        case 17..<21: return "Good evening."
-        default: return "Still awake."
+        
+        // MARK: - Scale press button style
+        struct ScaleButtonStyle: ButtonStyle {
+            func makeBody(configuration: Configuration) -> some View {
+                configuration.label
+                    .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+                    .animation(.spring(duration: 0.2), value: configuration.isPressed)
+            }
         }
-    }
-
-    func weekStartString() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d MMM"
-        guard let weekStart = Calendar.current.date(
-            from: Calendar.current.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
-        ) else { return "" }
-        return formatter.string(from: weekStart)
-    }
-}
-
-// MARK: - Stat pill
-struct StatPill: View {
-    let value: String
-    let label: String
-    let icon: String
-    let color: Color
-
-    var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.caption).foregroundStyle(color)
-            Text(value)
-                .font(.title3).fontWeight(.bold).fontDesign(.rounded)
-            Text(label)
-                .font(.caption2).fontDesign(.rounded)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        
+        #Preview("Today — light") {
+            TodayView(showRecording: .constant(false))
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .background(Color.sottoSecondary, in: RoundedRectangle(cornerRadius: 14))
-    }
-}
-
-// MARK: - Scale press button style
-struct ScaleButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .animation(.spring(duration: 0.2), value: configuration.isPressed)
-    }
-}
-
-#Preview("Today — light") {
-    TodayView(showRecording: .constant(false))
-}
-#Preview("Today — dark") {
-    TodayView(showRecording: .constant(false))
-        .preferredColorScheme(.dark)
-}
+        #Preview("Today — dark") {
+            TodayView(showRecording: .constant(false))
+                .preferredColorScheme(.dark)
+        }

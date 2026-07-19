@@ -6,8 +6,15 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		41FAC2983009818000E4E2CB /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 41FAC2973009818000E4E2CB /* Secrets.xcconfig */; };
+		6B0EDF321303B30FEC9139E7 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = A512AD77F9DE2A0AD8C93934 /* WhisperKit */; };
+		D8041B38DD0ED190B1374C88 /* GoogleGenerativeAI in Frameworks */ = {isa = PBXBuildFile; productRef = 27B2896126244B45AC2A3242 /* GoogleGenerativeAI */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		41D96F463007B43A00BDA028 /* Sotto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sotto.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		41FAC2973009818000E4E2CB /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -23,6 +30,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6B0EDF321303B30FEC9139E7 /* WhisperKit in Frameworks */,
+				D8041B38DD0ED190B1374C88 /* GoogleGenerativeAI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -32,6 +41,7 @@
 		41D96F3D3007B43A00BDA028 = {
 			isa = PBXGroup;
 			children = (
+				41FAC2973009818000E4E2CB /* Secrets.xcconfig */,
 				41D96F483007B43A00BDA028 /* Sotto */,
 				41D96F473007B43A00BDA028 /* Products */,
 			);
@@ -65,6 +75,8 @@
 			);
 			name = Sotto;
 			packageProductDependencies = (
+				A512AD77F9DE2A0AD8C93934 /* WhisperKit */,
+				27B2896126244B45AC2A3242 /* GoogleGenerativeAI */,
 			);
 			productName = Sotto;
 			productReference = 41D96F463007B43A00BDA028 /* Sotto.app */;
@@ -94,6 +106,10 @@
 			);
 			mainGroup = 41D96F3D3007B43A00BDA028;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1056FE38FD6FAEE7C0875FD9 /* XCRemoteSwiftPackageReference "WhisperKit" */,
+				D2E112EF732193DD3E9DABFD /* XCRemoteSwiftPackageReference "generative-ai-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 41D96F473007B43A00BDA028 /* Products */;
 			projectDirPath = "";
@@ -109,6 +125,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				41FAC2983009818000E4E2CB /* Secrets.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -127,6 +144,7 @@
 /* Begin XCBuildConfiguration section */
 		41D96F4F3007B43B00BDA028 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 41FAC2973009818000E4E2CB /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -189,6 +207,7 @@
 		};
 		41D96F503007B43B00BDA028 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 41FAC2973009818000E4E2CB /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -243,6 +262,7 @@
 		};
 		41D96F523007B43B00BDA028 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 41FAC2973009818000E4E2CB /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -254,6 +274,9 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_GeminiAPIKey = "$(GEMINI_API_KEY)";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sotto needs access to your microphone to record your journal entries.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Sotto needs access to speech recognition to transcribe your audio.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -287,6 +310,7 @@
 		};
 		41D96F533007B43B00BDA028 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 41FAC2973009818000E4E2CB /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -298,6 +322,9 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_GeminiAPIKey = "$(GEMINI_API_KEY)";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sotto needs access to your microphone to record your journal entries.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Sotto needs access to speech recognition to transcribe your audio.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -351,6 +378,38 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1056FE38FD6FAEE7C0875FD9 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/WhisperKit";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+		D2E112EF732193DD3E9DABFD /* XCRemoteSwiftPackageReference "generative-ai-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google-gemini/generative-ai-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.5.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		27B2896126244B45AC2A3242 /* GoogleGenerativeAI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D2E112EF732193DD3E9DABFD /* XCRemoteSwiftPackageReference "generative-ai-swift" */;
+			productName = GoogleGenerativeAI;
+		};
+		A512AD77F9DE2A0AD8C93934 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1056FE38FD6FAEE7C0875FD9 /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = WhisperKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 41D96F3E3007B43A00BDA028 /* Project object */;
 }

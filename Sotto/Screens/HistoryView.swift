@@ -5,35 +5,40 @@
 
 import SwiftUI
 
+import SwiftData
+
 struct HistoryView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \JournalEntry.date, order: .reverse) private var entries: [JournalEntry]
+
     @State private var searchText = ""
     @State private var selectedFilter = "All"
     @State private var showDeleteAlert = false
     @State private var showFavouriteAlert = false
     let filters = ["All", "Voice", "Text", "Favourites"]
 
-    var filteredEntries: [MockEntry] {
-        var entries = mockEntries
+    var filteredEntries: [JournalEntry] {
+        var filtered = entries
         switch selectedFilter {
-        case "Voice":       entries = entries.filter { $0.inputMode == "voice" }
-        case "Text":        entries = entries.filter { $0.inputMode == "text" }
-        case "Favourites":  entries = entries.filter { $0.isFavourite }
+        case "Voice":       filtered = filtered.filter { $0.inputMode == "voice" }
+        case "Text":        filtered = filtered.filter { $0.inputMode == "text" }
+        case "Favourites":  filtered = filtered.filter { $0.isFavourite }
         default: break
         }
         if !searchText.isEmpty {
-            entries = entries.filter {
+            filtered = filtered.filter {
                 $0.transcript.localizedCaseInsensitiveContains(searchText) ||
                 $0.primaryEmotion.localizedCaseInsensitiveContains(searchText) ||
                 $0.themes.contains { $0.localizedCaseInsensitiveContains(searchText) }
             }
         }
-        return entries
+        return filtered
     }
 
-    var groupedEntries: [(String, [MockEntry])] {
+    var groupedEntries: [(String, [JournalEntry])] {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM yyyy"
-        var groups: [String: [MockEntry]] = [:]
+        var groups: [String: [JournalEntry]] = [:]
         for entry in filteredEntries {
             let key = formatter.string(from: entry.date)
             groups[key, default: []].append(entry)
@@ -98,6 +103,7 @@ struct HistoryView: View {
                                 }
                                 .swipeActions(edge: .leading) {
                                     Button {
+                                        entry.isFavourite.toggle()
                                         showFavouriteAlert = true
                                     } label: {
                                         Label("Favourite", systemImage: "heart.fill")
@@ -106,6 +112,7 @@ struct HistoryView: View {
                                 }
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) {
+                                        modelContext.delete(entry)
                                         showDeleteAlert = true
                                     } label: {
                                         Label("Delete", systemImage: "trash")
@@ -138,7 +145,7 @@ struct HistoryView: View {
 
 // MARK: - Entry Row
 struct EntryRowView: View {
-    let entry: MockEntry
+    let entry: JournalEntry
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

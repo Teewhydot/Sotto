@@ -4,13 +4,21 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct SettingsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \JournalEntry.date) private var entries: [JournalEntry]
+
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @AppStorage("notificationsEnabled") private var notificationsEnabled = true
     @AppStorage("notificationTime") private var notificationHour = 21
     @AppStorage("reminderLabel") private var reminderLabel = "Evening"
     @AppStorage("hapticFeedback") private var hapticFeedback = true
+    @AppStorage("faceIDEnabled") private var faceIDEnabled = false
+    @AppStorage("appTheme") private var appTheme = "Indigo"
+    @AppStorage("appIcon") private var appIcon = "Default"
+    @AppStorage("notificationSound") private var notificationSound = "Whisper"
 
     @State private var showResetAlert = false
     @State private var showExportSheet = false
@@ -28,7 +36,7 @@ struct SettingsView: View {
                             Circle()
                                 .fill(
                                     LinearGradient(
-                                        colors: [Color(hex: "#6366F1"), Color(hex: "#8B5CF6")],
+                                        colors: [Color.sottoAccent, Color(hex: "#F2CC8F")],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     )
@@ -40,10 +48,16 @@ struct SettingsView: View {
                         }
 
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Issa Abubakar")
+                            Text("Sotto User")
                                 .font(.body).fontWeight(.semibold).fontDesign(.rounded)
-                            Text("Journalling since July 2025")
-                                .font(.caption).foregroundStyle(.secondary)
+                            
+                            if let firstDate = entries.first?.date {
+                                Text("Journalling since \(firstDate.formatted(.dateTime.month().year()))")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Text("Start your journal today")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                         Spacer()
                         Image(systemName: "chevron.right")
@@ -63,15 +77,24 @@ struct SettingsView: View {
                         HStack {
                             Label("Reminder time", systemImage: "clock")
                             Spacer()
-                            Text("9:00 PM")
-                                .font(.subheadline).foregroundStyle(.secondary)
+                            Picker("", selection: $notificationHour) {
+                                ForEach(0..<24, id: \.self) { hour in
+                                    Text("\(hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour)):00 \(hour >= 12 ? "PM" : "AM")")
+                                        .tag(hour)
+                                }
+                            }
+                            .tint(.secondary)
                         }
 
                         HStack {
                             Label("Notification sound", systemImage: "speaker.wave.2")
                             Spacer()
-                            Text("Whisper")
-                                .font(.subheadline).foregroundStyle(.secondary)
+                            Menu(notificationSound) {
+                                Button("Whisper") { notificationSound = "Whisper" }
+                                Button("Chime") { notificationSound = "Chime" }
+                                Button("Subtle") { notificationSound = "Subtle" }
+                            }
+                            .font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -81,15 +104,23 @@ struct SettingsView: View {
                     HStack {
                         Label("Theme", systemImage: "paintpalette")
                         Spacer()
-                        Text("Indigo")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                        Menu(appTheme) {
+                            Button("Indigo") { appTheme = "Indigo" }
+                            Button("Rose") { appTheme = "Rose" }
+                            Button("Slate") { appTheme = "Slate" }
+                        }
+                        .font(.subheadline).foregroundStyle(.secondary)
                     }
 
                     HStack {
                         Label("App icon", systemImage: "app")
                         Spacer()
-                        Text("Default")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                        Menu(appIcon) {
+                            Button("Default") { appIcon = "Default" }
+                            Button("Dark") { appIcon = "Dark" }
+                            Button("Light") { appIcon = "Light" }
+                        }
+                        .font(.subheadline).foregroundStyle(.secondary)
                     }
 
                     Toggle(isOn: $hapticFeedback) {
@@ -100,12 +131,10 @@ struct SettingsView: View {
 
                 // ── Privacy ───────────────────────────────────────────────
                 Section("Privacy") {
-                    HStack {
+                    Toggle(isOn: $faceIDEnabled) {
                         Label("Face ID lock", systemImage: "faceid")
-                        Spacer()
-                        Text("Off")
-                            .font(.subheadline).foregroundStyle(.secondary)
                     }
+                    .tint(Color.sottoAccent)
 
                     HStack {
                         Label("Data storage", systemImage: "internaldrive")
@@ -115,7 +144,7 @@ struct SettingsView: View {
                     }
 
                     Button {
-                        showExportSheet = true
+                        exportData()
                     } label: {
                         Label("Export all entries", systemImage: "square.and.arrow.up")
                             .foregroundStyle(Color.sottoAccent)
@@ -154,18 +183,18 @@ struct SettingsView: View {
                         Label("Delete all data", systemImage: "trash")
                     }
 
-                    Button {
-                        hasCompletedOnboarding = false
-                    } label: {
-                        Label("Replay onboarding", systemImage: "arrow.counterclockwise")
-                            .foregroundStyle(Color.sottoAccent)
-                    }
                 }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .alert("Delete all data?", isPresented: $showResetAlert) {
-                Button("Delete", role: .destructive) {}
+                Button("Delete", role: .destructive) {
+                    do {
+                        try modelContext.delete(model: JournalEntry.self)
+                    } catch {
+                        print("Failed to delete data: \(error)")
+                    }
+                }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will permanently erase every journal entry and insight. This cannot be undone.")
@@ -176,12 +205,27 @@ struct SettingsView: View {
                 Text("This would normally open the App Store review page.")
             }
             .sheet(isPresented: $showExportSheet) {
-                ShareSheet(items: ["Date,Emotion,Transcript\n2026-07-16,Positive,Sample transcript data..."])
+                ShareSheet(items: [generateExportString()])
             }
             .sheet(isPresented: $showPrivacyPolicy) {
                 SafariView(url: URL(string: "https://apple.com/privacy")!)
             }
         }
+    }
+    
+    private func exportData() {
+        showExportSheet = true
+    }
+    
+    private func generateExportString() -> String {
+        var csv = "Date,Emotion,Summary,Transcript\n"
+        for entry in entries {
+            let dateStr = entry.date.formatted(date: .abbreviated, time: .shortened)
+            let safeSummary = entry.summary.replacingOccurrences(of: "\"", with: "\"\"")
+            let safeTranscript = entry.transcript.replacingOccurrences(of: "\"", with: "\"\"")
+            csv += "\(dateStr),\(entry.primaryEmotion),\"\(safeSummary)\",\"\(safeTranscript)\"\n"
+        }
+        return csv
     }
 }
 

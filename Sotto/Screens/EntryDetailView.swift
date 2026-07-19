@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct EntryDetailView: View {
-    let entry: MockEntry
+    let entry: JournalEntry
     @Environment(\.dismiss) var dismiss
     @State private var showFullTranscript = false
     @State private var showObservation = false
@@ -16,7 +16,7 @@ struct EntryDetailView: View {
     @State private var showShareSheet = false
     @State private var showDeleteAlert = false
 
-    init(entry: MockEntry) {
+    init(entry: JournalEntry) {
         self.entry = entry
         _isFavourite = State(initialValue: entry.isFavourite)
     }
@@ -251,6 +251,7 @@ struct EntryDetailView: View {
     }
 }
 
+/*
 #Preview("Entry Detail — Reflective") {
     NavigationStack {
         EntryDetailView(entry: mockEntries[0])
@@ -267,3 +268,4 @@ struct EntryDetailView: View {
     }
     .preferredColorScheme(.dark)
 }
+*/

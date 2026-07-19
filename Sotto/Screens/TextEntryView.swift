@@ -61,7 +61,15 @@ struct TextEntryView: View {
                 isFocused = true
             }
             .fullScreenCover(isPresented: $showAnalysis) {
-                AnalysisView()
+                AnalysisView(
+                    transcript: text,
+                    duration: 0, // No audio duration for text entries
+                    wordCount: text.split(separator: " ").count,
+                    onComplete: {
+                        showAnalysis = false
+                        dismiss()
+                    }
+                )
             }
         }
     }

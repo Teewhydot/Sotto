@@ -33,7 +33,7 @@ extension Color {
     static let sottoRecordingBG = Color(hex: "#000000")
 
     // Brand accent
-    static let sottoAccent      = Color(hex: "#4F46E5")   // indigo
+    static let sottoAccent      = Color(hex: "#E07A5F")   // soft terracotta
 
     // Emotion semantic colours
     static let emotionPositive  = Color(hex: "#10B981")   // emerald

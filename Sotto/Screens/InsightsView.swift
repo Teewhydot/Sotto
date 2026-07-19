@@ -4,15 +4,56 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct InsightsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \JournalEntry.date, order: .reverse) private var entries: [JournalEntry]
+
     @State private var selectedPeriod = "Month"
     let periods = ["Week", "Month", "3 Months"]
+    
+    var filteredEntries: [JournalEntry] {
+        let calendar = Calendar.current
+        let now = Date()
+        let cutoff: Date
+        switch selectedPeriod {
+        case "Week":
+            cutoff = calendar.date(byAdding: .weekOfYear, value: -1, to: now) ?? now
+        case "3 Months":
+            cutoff = calendar.date(byAdding: .month, value: -3, to: now) ?? now
+        default: // "Month"
+            cutoff = calendar.date(byAdding: .month, value: -1, to: now) ?? now
+        }
+        return entries.filter { $0.date >= cutoff }
+    }
 
-    // Streak + summary figures
-    let currentStreak = 7
-    let totalEntries = 32
-    let avgWordsPerEntry = 64
+    var currentStreak: Int {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let dates = Set(entries.map { calendar.startOfDay(for: $0.date) }).sorted(by: >)
+        guard !dates.isEmpty else { return 0 }
+        var streak = 0
+        var expectedDate = startOfToday
+        if !dates.contains(startOfToday) {
+            if dates.contains(calendar.date(byAdding: .day, value: -1, to: startOfToday)!) {
+                expectedDate = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
+            } else { return 0 }
+        }
+        for date in dates {
+            if date == expectedDate {
+                streak += 1
+                expectedDate = calendar.date(byAdding: .day, value: -1, to: expectedDate)!
+            } else { break }
+        }
+        return streak
+    }
+    var totalEntries: Int { entries.count }
+    var avgWordsPerEntry: Int {
+        guard !entries.isEmpty else { return 0 }
+        let totalWords = entries.reduce(0) { $0 + $1.wordCount }
+        return totalWords / entries.count
+    }
 
     var body: some View {
         NavigationStack {
@@ -57,7 +98,7 @@ struct InsightsView: View {
                             value: "\(totalEntries)",
                             label: "Total entries",
                             icon: "text.bubble.fill",
-                            color: Color(hex: "#4F46E5")
+                            color: Color.sottoAccent
                         )
                         InsightStatCard(
                             value: "\(avgWordsPerEntry)",
@@ -71,7 +112,7 @@ struct InsightsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionLabel(text: "Mood Calendar")
                         SottoCard {
-                            MoodCalendarView()
+                            MoodCalendarView(entries: entries)
                         }
                     }
 
@@ -79,7 +120,7 @@ struct InsightsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionLabel(text: "Emotional Tone")
                         SottoCard {
-                            ValenceTrendChart()
+                            ValenceTrendChart(entries: filteredEntries)
                         }
                     }
 
@@ -87,7 +128,7 @@ struct InsightsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionLabel(text: "Emotions This Period")
                         SottoCard {
-                            EmotionBreakdownView()
+                            EmotionBreakdownView(entries: filteredEntries)
                         }
                     }
 
@@ -95,7 +136,7 @@ struct InsightsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionLabel(text: "Recurring Themes")
                         SottoCard {
-                            ThemeCloudView()
+                            ThemeCloudView(entries: filteredEntries)
                         }
                     }
 
@@ -111,7 +152,7 @@ struct InsightsView: View {
                                         .font(.caption).fontWeight(.semibold)
                                         .foregroundStyle(Color.sottoAccent)
                                 }
-                                Text(mockWeeklyBrief.patternObservation)
+                                Text(entries.isEmpty ? "No patterns yet." : "You've been leaning towards \(entries.first!.primaryEmotion) lately.")
                                     .font(.callout).fontDesign(.rounded)
                                     .foregroundStyle(.primary)
                                     .lineSpacing(4)
@@ -125,7 +166,7 @@ struct InsightsView: View {
                                         .font(.caption).fontWeight(.semibold)
                                         .foregroundStyle(Color(hex: "#F59E0B"))
                                 }
-                                Text(mockWeeklyBrief.invitation)
+                                Text(entries.isEmpty ? "Keep journaling to unlock deeper insights." : "Take a moment to reflect on your \(entries.first!.primaryEmotion) feelings.")
                                     .font(.callout).fontDesign(.rounded).italic()
                                     .foregroundStyle(.secondary)
                                     .lineSpacing(4)
@@ -169,13 +210,14 @@ struct InsightStatCard: View {
 
 // MARK: - Mood Calendar (30-day grid)
 struct MoodCalendarView: View {
-    // Sort calendar data by date descending
+    var entries: [JournalEntry]
+
     private var calendarDays: [(date: Date, valence: Double?)] {
         (0..<30).compactMap { daysAgo -> (Date, Double?)? in
             guard let date = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) else { return nil }
-            let key = mockCalendarData.first(where: { Calendar.current.isDate($0.key, inSameDayAs: date) })
-            return (date, key?.value ?? nil)
-        }
+            let entry = entries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) })
+            return (date, entry?.valence)
+        }.reversed()
     }
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
@@ -253,64 +295,79 @@ struct LegendItem: View {
 
 // MARK: - Valence Trend (sparkline)
 struct ValenceTrendChart: View {
-    // Sample valence over time (most recent 14 entries)
-    private let values: [Double] = [-0.2, 0.8, -0.6, 0.65, -0.75, -0.5, 0.9, 0.3, -0.4, 0.6, -0.3, 0.7, -0.8, 0.5]
+    var entries: [JournalEntry]
+
+    private var values: [Double] {
+        Array(entries.prefix(14).map { $0.valence }.reversed())
+    }
+
+    private var averageValence: Double {
+        guard !values.isEmpty else { return 0 }
+        return values.reduce(0, +) / Double(values.count)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Annotation
             HStack {
-                Text("Last 14 entries")
+                Text(values.isEmpty ? "No entries yet" : "Last \(values.count) entries")
                     .font(.caption2).foregroundStyle(.tertiary)
                 Spacer()
-                Text("Avg. −0.12")
-                    .font(.caption2).fontDesign(.rounded)
-                    .foregroundStyle(Color(hex: "#F59E0B"))
-            }
-
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-                let step = w / CGFloat(values.count - 1)
-
-                ZStack {
-                    // Zero line
-                    Path { path in
-                        path.move(to: CGPoint(x: 0, y: h / 2))
-                        path.addLine(to: CGPoint(x: w, y: h / 2))
-                    }
-                    .stroke(Color.sottoTertiary, style: StrokeStyle(lineWidth: 1, dash: [4]))
-
-                    // Trend line
-                    Path { path in
-                        for (i, value) in values.enumerated() {
-                            let x = CGFloat(i) * step
-                            let y = h / 2 - (CGFloat(value) * h / 2 * 0.85)
-                            if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
-                            else { path.addLine(to: CGPoint(x: x, y: y)) }
-                        }
-                    }
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color(hex: "#4F46E5"), Color(hex: "#8B5CF6")],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
-                    )
-
-                    // Data points
-                    ForEach(Array(values.enumerated()), id: \.offset) { i, value in
-                        let x = CGFloat(i) * step
-                        let y = h / 2 - (CGFloat(value) * h / 2 * 0.85)
-                        Circle()
-                            .fill(dotColor(value))
-                            .frame(width: 7, height: 7)
-                            .position(x: x, y: y)
-                    }
+                if !values.isEmpty {
+                    Text(String(format: "Avg. %.2f", averageValence))
+                        .font(.caption2).fontDesign(.rounded)
+                        .foregroundStyle(dotColor(averageValence))
                 }
             }
-            .frame(height: 80)
+
+            if values.count < 2 {
+                Text(values.isEmpty ? "No data yet." : "Need more entries for trend.")
+                    .font(.caption2).foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, minHeight: 80)
+            } else {
+                GeometryReader { geo in
+                    let w = geo.size.width
+                    let h = geo.size.height
+                    let step = w / CGFloat(values.count - 1)
+
+                    ZStack {
+                        // Zero line
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: h / 2))
+                            path.addLine(to: CGPoint(x: w, y: h / 2))
+                        }
+                        .stroke(Color.sottoTertiary, style: StrokeStyle(lineWidth: 1, dash: [4]))
+
+                        // Trend line
+                        Path { path in
+                            for (i, value) in values.enumerated() {
+                                let x = CGFloat(i) * step
+                                let y = h / 2 - (CGFloat(value) * h / 2 * 0.85)
+                                if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                                else { path.addLine(to: CGPoint(x: x, y: y)) }
+                            }
+                        }
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.sottoAccent, Color.sottoAccent.opacity(0.3)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
+                        )
+
+                        // Data points
+                        ForEach(Array(values.enumerated()), id: \.offset) { i, value in
+                            let x = CGFloat(i) * step
+                            let y = h / 2 - (CGFloat(value) * h / 2 * 0.85)
+                            Circle()
+                                .fill(dotColor(value))
+                                .frame(width: 7, height: 7)
+                                .position(x: x, y: y)
+                        }
+                    }
+                }
+                .frame(height: 80)
+            }
         }
     }
 
@@ -323,14 +380,20 @@ struct ValenceTrendChart: View {
 
 // MARK: - Emotion breakdown (horizontal bar chart)
 struct EmotionBreakdownView: View {
-    private let emotions: [(String, Color, Double)] = [
-        ("Reflective",  Color(hex: "#F59E0B"), 0.28),
-        ("Overwhelmed", Color(hex: "#374151"), 0.20),
-        ("Grateful",    Color(hex: "#10B981"), 0.18),
-        ("Anxious",     Color(hex: "#F97316"), 0.16),
-        ("Content",     Color(hex: "#34D399"), 0.10),
-        ("Excited",     Color(hex: "#10B981"), 0.08),
-    ]
+    var entries: [JournalEntry]
+    
+    private var emotions: [(String, Color, Double)] {
+        guard !entries.isEmpty else { return [] }
+        var counts: [String: Int] = [:]
+        for entry in entries {
+            counts[entry.primaryEmotion, default: 0] += 1
+        }
+        let total = Double(entries.count)
+        return counts.map { (name, count) in
+            let color = entries.first(where: { $0.primaryEmotion == name })?.emotionColor ?? .gray
+            return (name, color, Double(count) / total)
+        }.sorted { $0.2 > $1.2 }.prefix(6).map { $0 }
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -367,24 +430,37 @@ struct EmotionBreakdownView: View {
 
 // MARK: - Theme cloud (tag cloud-ish layout)
 struct ThemeCloudView: View {
-    private let themes: [(String, Int)] = [
-        ("work", 12), ("self-doubt", 9), ("communication", 7),
-        ("relationships", 6), ("rest", 5), ("gratitude", 5),
-        ("anxiety", 4), ("growth", 4), ("creativity", 3),
-        ("boundaries", 3), ("family", 2), ("nature", 2)
-    ]
+    var entries: [JournalEntry]
+    
+    private var themes: [(String, Int)] {
+        var counts: [String: Int] = [:]
+        for entry in entries {
+            for theme in entry.themes {
+                counts[theme, default: 0] += 1
+            }
+        }
+        return counts.sorted { $0.value > $1.value }.prefix(12).map { $0 }
+    }
 
     var body: some View {
-        FlexibleTagLayout(spacing: 8) {
-            ForEach(themes, id: \.0) { item in
-                Text(item.0)
-                    .font(.caption).fontDesign(.rounded)
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(
-                        Color.sottoAccent.opacity(Double(item.1) / 14.0 * 0.3 + 0.05),
-                        in: Capsule()
-                    )
-                    .foregroundStyle(Color.sottoAccent.opacity(Double(item.1) / 14.0 * 0.6 + 0.4))
+        if themes.isEmpty {
+            Text("No themes detected yet.")
+                .font(.caption2).foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+        } else {
+            let maxCount = Double(themes.first?.1 ?? 1)
+            FlexibleTagLayout(spacing: 8) {
+                ForEach(themes, id: \.0) { item in
+                    Text(item.0)
+                        .font(.caption).fontDesign(.rounded)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(
+                            Color.sottoAccent.opacity(Double(item.1) / maxCount * 0.3 + 0.05),
+                            in: Capsule()
+                        )
+                        .foregroundStyle(Color.sottoAccent.opacity(Double(item.1) / maxCount * 0.6 + 0.4))
+                }
             }
         }
     }

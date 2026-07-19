@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct SottoApp: App {
@@ -19,5 +20,6 @@ struct SottoApp: App {
                 OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
             }
         }
+        .modelContainer(for: JournalEntry.self)
     }
 }

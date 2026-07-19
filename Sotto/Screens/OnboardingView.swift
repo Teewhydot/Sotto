@@ -14,19 +14,19 @@ struct OnboardingView: View {
             emoji: "🎙️",
             title: "Speak freely.",
             body: "Sotto listens to everything you say — without you having to structure it or make it make sense.",
-            accentColor: Color(hex: "#4F46E5")
+            accentColor: Color.sottoAccent // Terracotta
         ),
         OnboardingPage(
             emoji: "🪞",
             title: "It notices things.",
             body: "Patterns in how you speak. Recurring themes. The emotions underneath the words you actually chose.",
-            accentColor: Color(hex: "#8B5CF6")
+            accentColor: Color(hex: "#EAB308") // Warm amber/sand
         ),
         OnboardingPage(
             emoji: "🌿",
             title: "No performance.",
             body: "Sotto is not a productivity tool. There are no streaks. Just a quiet place to be honest with yourself.",
-            accentColor: Color(hex: "#10B981")
+            accentColor: Color(hex: "#64748B") // Slate/Sage
         ),
     ]
 

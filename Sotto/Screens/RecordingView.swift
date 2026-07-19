@@ -7,8 +7,10 @@ import SwiftUI
 import Combine
 
 // MARK: - Animated Waveform
-struct MockWaveformView: View {
+struct WaveformView: View {
     let isActive: Bool
+    let power: Float
+    
     @State private var amplitudes: [CGFloat] = Array(repeating: 0.1, count: 42)
     let timer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
 
@@ -36,7 +38,10 @@ struct MockWaveformView: View {
         .onReceive(timer) { _ in
             guard isActive else { return }
             withAnimation(.linear(duration: 0.08)) {
-                amplitudes = Array(amplitudes.dropFirst()) + [CGFloat.random(in: 0.05...0.95)]
+                // Mix random jitter with actual mic power for organic feel
+                let randomJitter = CGFloat.random(in: -0.1...0.3)
+                let mixedPower = max(0.1, CGFloat(power) + randomJitter)
+                amplitudes = Array(amplitudes.dropFirst()) + [min(mixedPower, 0.95)]
             }
         }
     }
@@ -45,16 +50,13 @@ struct MockWaveformView: View {
 // MARK: - Recording View
 struct RecordingView: View {
     @Environment(\.dismiss) var dismiss
-
-    @State private var isRecording = true
-    @State private var isPaused = false
-    @State private var elapsedSeconds = 107
-    @State private var wordCount = 214
+    
+    @State private var speechService = SpeechService()
+    @State private var showSetup = false
+    
+    @State private var elapsedSeconds = 0
     @State private var showTranscriptCursor = true
     @State private var showAnalysis = false
-
-    let committedText = "I've been thinking about the conversation we had yesterday and whether I handled it the right way. I keep coming back to the moment when I said something that I didn't mean to say in that way. I think I was trying to be direct but it came out differently."
-    @State private var partialText = "It's been sitting with me all da"
 
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     let cursorTimer = Timer.publish(every: 0.55, on: .main, in: .common).autoconnect()
@@ -67,7 +69,10 @@ struct RecordingView: View {
                 // ── Top bar ───────────────────────────────────────────────
                 HStack {
                     Spacer()
-                    Button { dismiss() } label: {
+                    Button {
+                        speechService.stopRecording()
+                        dismiss()
+                    } label: {
                         Text("Cancel")
                             .font(.body).fontDesign(.rounded)
                             .foregroundStyle(.white.opacity(0.5))
@@ -78,31 +83,43 @@ struct RecordingView: View {
 
                 Spacer()
 
-                // ── Recording indicator badge ─────────────────────────────
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(isPaused ? Color(hex: "#F59E0B") : Color(hex: "#EF4444"))
-                        .frame(width: 8, height: 8)
-                        .opacity(isPaused ? 1 : (showTranscriptCursor ? 1 : 0.3))
-                    Text(isPaused ? "Paused" : "Recording")
-                        .font(.caption).fontWeight(.semibold).fontDesign(.rounded)
-                        .foregroundStyle(.white.opacity(0.7))
+                // ── Status ────────────────────────────────────────────────
+                if case .error(let err) = speechService.recordingState {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.title).foregroundStyle(.red)
+                        Text(err.localizedDescription)
+                            .font(.subheadline).foregroundStyle(.white.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                    }
+                } else {
+                    // Recording Indicator
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color(hex: "#EF4444"))
+                            .frame(width: 8, height: 8)
+                            .opacity(showTranscriptCursor ? 1 : 0.3)
+                        Text(speechService.isRecording ? "Recording" : "Ready")
+                            .font(.caption).fontWeight(.semibold).fontDesign(.rounded)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(.white.opacity(0.08), in: Capsule())
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(.white.opacity(0.08), in: Capsule())
 
                 Spacer().frame(height: 28)
 
                 // ── Waveform ──────────────────────────────────────────────
-                MockWaveformView(isActive: isRecording && !isPaused)
+                WaveformView(isActive: speechService.isRecording, power: speechService.audioPower)
                     .padding(.horizontal, 24)
 
                 Spacer().frame(height: 28)
 
                 // ── Live transcript ───────────────────────────────────────
                 ScrollView {
-                    Text("\(Text(committedText + " ").foregroundColor(.white))\(Text(partialText).foregroundColor(.white.opacity(0.45)))\(Text(showTranscriptCursor ? "▌" : " ").foregroundColor(Color.sottoAccent))")
+                    Text("\(Text(speechService.transcript).foregroundColor(.white))\(Text(showTranscriptCursor ? "▌" : " ").foregroundColor(Color.sottoAccent))")
                     .font(.body).fontDesign(.serif)
                     .lineSpacing(6)
                     .multilineTextAlignment(.leading)
@@ -119,7 +136,7 @@ struct RecordingView: View {
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.55))
                     Text("·").foregroundStyle(.white.opacity(0.25))
-                    Text("\(wordCount) words")
+                    Text("\(speechService.transcript.split(separator: " ").count) words")
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.55))
                 }
@@ -128,24 +145,14 @@ struct RecordingView: View {
 
                 // ── Controls ──────────────────────────────────────────────
                 HStack(spacing: 52) {
-                    // Pause / Resume
-                    Button {
-                        withAnimation(.spring(duration: 0.3)) { isPaused.toggle() }
-                    } label: {
-                        Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(.white)
-                            .frame(width: 58, height: 58)
-                            .background(.white.opacity(0.1), in: Circle())
-                    }
-
                     // Done
                     Button {
+                        speechService.stopRecording()
                         showAnalysis = true
                     } label: {
                         VStack(spacing: 6) {
                             ZStack {
-                                Circle().fill(.white).frame(width: 62, height: 62)
+                                Circle().fill(speechService.isRecording ? .white : .white.opacity(0.3)).frame(width: 62, height: 62)
                                 Image(systemName: "stop.fill")
                                     .font(.system(size: 24))
                                     .foregroundStyle(Color.sottoRecordingBG)
@@ -155,21 +162,59 @@ struct RecordingView: View {
                                 .foregroundStyle(.white.opacity(0.55))
                         }
                     }
+                    .disabled(!speechService.isRecording)
                 }
 
                 Spacer().frame(height: 56)
             }
         }
         .fullScreenCover(isPresented: $showAnalysis) {
-            AnalysisView()
+            AnalysisView(
+                transcript: speechService.transcript,
+                duration: elapsedSeconds,
+                wordCount: speechService.transcript.split(separator: " ").count,
+                onComplete: {
+                    showAnalysis = false
+                    dismiss()
+                }
+            )
         }
         .onReceive(timer) { _ in
-            guard isRecording && !isPaused else { return }
+            guard speechService.isRecording else { return }
             elapsedSeconds += 1
-            if elapsedSeconds % 3 == 0 { wordCount += Int.random(in: 2...5) }
         }
         .onReceive(cursorTimer) { _ in
             showTranscriptCursor.toggle()
+        }
+        .fullScreenCover(isPresented: $showSetup) {
+            WhisperSetupView(speechService: speechService) {
+                showSetup = false
+                speechService.startRecording()
+            }
+        }
+        .task {
+            let auth = await speechService.requestPermissions()
+            guard auth else {
+                speechService.recordingState = .error(.micPermissionDenied)
+                return
+            }
+            if speechService.isModelCached {
+                // Already downloaded — load silently and start
+                await speechService.downloadAndLoad()
+                if speechService.whisperState == .ready {
+                    speechService.startRecording()
+                } else {
+                    // Load failed, still start with SFSpeech fallback
+                    speechService.startRecording()
+                }
+            } else {
+                // First time — show the setup flow
+                showSetup = true
+            }
+        }
+        .onDisappear {
+            speechService.stopRecording()
+            speechService.unloadModel()
         }
     }
 
@@ -178,8 +223,4 @@ struct RecordingView: View {
         let s = seconds % 60
         return String(format: "%d:%02d", m, s)
     }
-}
-
-#Preview("Recording — active") {
-    RecordingView()
 }
