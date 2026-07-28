@@ -1,8 +1,3 @@
-//
-//  SottoMainView.swift
-//  Sotto
-//
-
 import SwiftUI
 
 // MARK: - Main container

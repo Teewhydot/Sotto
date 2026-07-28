@@ -1,7 +1,3 @@
-//
-//  Config.swift
-//  Sotto
-//
 //  API keys are loaded from Info.plist at runtime.
 //  The values are injected at build time via Secrets.xcconfig (gitignored).
 //  See Secrets.xcconfig.template for the required keys.

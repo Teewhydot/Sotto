@@ -1,8 +1,3 @@
-//
-//  AppError.swift
-//  Sotto
-//
-
 import Foundation
 
 enum AppError: Error, LocalizedError, Equatable {

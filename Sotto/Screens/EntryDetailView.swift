@@ -1,8 +1,3 @@
-//
-//  EntryDetailView.swift
-//  Sotto
-//
-
 import SwiftUI
 
 struct EntryDetailView: View {

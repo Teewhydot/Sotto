@@ -1,7 +1,3 @@
-//
-//  WhisperSetupView.swift
-//  Sotto
-//
 //  Shown once when the user first taps the mic and the model hasn't been downloaded yet.
 //  After completion the parent dismisses this sheet and opens RecordingView.
 //

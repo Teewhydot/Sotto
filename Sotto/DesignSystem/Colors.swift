@@ -1,8 +1,3 @@
-//
-//  Colors.swift
-//  Sotto
-//
-
 import SwiftUI
 
 // MARK: - Hex Color initialiser

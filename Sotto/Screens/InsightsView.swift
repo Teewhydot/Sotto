@@ -1,8 +1,3 @@
-//
-//  InsightsView.swift
-//  Sotto
-//
-
 import SwiftUI
 import SwiftData
 

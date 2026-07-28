@@ -1,8 +1,3 @@
-//
-//  RecordingView.swift
-//  Sotto
-//
-
 import SwiftUI
 import Combine
 

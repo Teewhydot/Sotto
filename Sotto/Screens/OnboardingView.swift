@@ -1,8 +1,3 @@
-//
-//  OnboardingView.swift
-//  Sotto
-//
-
 import SwiftUI
 
 struct OnboardingView: View {

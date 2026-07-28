@@ -1,8 +1,3 @@
-//
-//  TextEntryView.swift
-//  Sotto
-//
-
 import SwiftUI
 
 struct TextEntryView: View {

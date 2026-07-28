@@ -1,8 +1,3 @@
-//
-//  ErrorSummaryView.swift
-//  Sotto
-//
-
 import SwiftUI
 
 struct ErrorSummaryView: View {

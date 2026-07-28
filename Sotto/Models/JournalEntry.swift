@@ -1,8 +1,3 @@
-//
-//  JournalEntry.swift
-//  Sotto
-//
-
 import Foundation
 import SwiftData
 import SwiftUI

@@ -1,8 +1,3 @@
-//
-//  ShareSheet.swift
-//  Sotto
-//
-
 import SwiftUI
 import UIKit
 

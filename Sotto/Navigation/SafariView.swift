@@ -1,8 +1,3 @@
-//
-//  SafariView.swift
-//  Sotto
-//
-
 import SwiftUI
 import SafariServices
 

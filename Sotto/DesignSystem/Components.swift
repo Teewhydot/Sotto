@@ -1,8 +1,3 @@
-//
-//  Components.swift
-//  Sotto
-//
-
 import SwiftUI
 
 // MARK: - EmotionBadge

@@ -1,8 +1,3 @@
-//
-//  AIAnalysisService.swift
-//  Sotto
-//
-
 import Foundation
 import GoogleGenerativeAI
 import SwiftUI

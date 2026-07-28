@@ -1,8 +1,3 @@
-//
-//  ViewState.swift
-//  Sotto
-//
-
 import Foundation
 
 enum ViewState<T: Equatable>: Equatable {

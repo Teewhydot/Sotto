@@ -1,8 +1,3 @@
-//
-//  SpeechService.swift
-//  Sotto
-//
-
 import Foundation
 import AVFoundation
 import Speech

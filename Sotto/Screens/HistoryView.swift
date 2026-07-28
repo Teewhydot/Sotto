@@ -1,8 +1,3 @@
-//
-//  HistoryView.swift
-//  Sotto
-//
-
 import SwiftUI
 
 import SwiftData

@@ -1,8 +1,3 @@
-//
-//  UIHelpers.swift
-//  Sotto
-//
-
 import Foundation
 import SwiftUI
 
