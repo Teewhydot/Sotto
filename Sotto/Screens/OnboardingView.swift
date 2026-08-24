@@ -20,7 +20,7 @@ struct OnboardingView: View {
         OnboardingPage(
             emoji: "🌿",
             title: "No performance.",
-            body: "Sotto is not a productivity tool. There are no streaks. Just a quiet place to be honest with yourself.",
+            body: "Sotto is not a productivity tool. No feeds, no scores to chase. Just a quiet place to be honest with yourself.",
             accentColor: Color(hex: "#64748B") // Slate/Sage
         ),
     ]

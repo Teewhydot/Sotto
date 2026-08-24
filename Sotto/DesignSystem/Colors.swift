@@ -27,8 +27,7 @@ extension Color {
     // Recording screen — always dark
     static let sottoRecordingBG = Color(hex: "#000000")
 
-    // Brand accent
-    static let sottoAccent      = Color(hex: "#E07A5F")   // soft terracotta
+    // Brand accent is dynamic — see Theme.swift / ThemeManager.
 
     // Emotion semantic colours
     static let emotionPositive  = Color(hex: "#10B981")   // emerald

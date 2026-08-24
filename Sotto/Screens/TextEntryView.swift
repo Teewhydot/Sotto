@@ -25,6 +25,7 @@ struct TextEntryView: View {
                     Spacer()
 
                     Button {
+                        Haptics.tap()
                         isFocused = false
                         showAnalysis = true
                     } label: {

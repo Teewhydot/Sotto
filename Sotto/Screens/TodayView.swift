@@ -15,26 +15,7 @@ struct TodayView: View {
     }
     
     var currentStreak: Int {
-        let calendar = Calendar.current
-        let startOfToday = calendar.startOfDay(for: Date())
-        let dates = Set(entries.map { calendar.startOfDay(for: $0.date) }).sorted(by: >)
-        guard !dates.isEmpty else { return 0 }
-        var streak = 0
-        var expectedDate = startOfToday
-        if !dates.contains(startOfToday) {
-            if dates.contains(calendar.date(byAdding: .day, value: -1, to: startOfToday)!) {
-                expectedDate = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
-            } else {
-                return 0
-            }
-        }
-        for date in dates {
-            if date == expectedDate {
-                streak += 1
-                expectedDate = calendar.date(byAdding: .day, value: -1, to: expectedDate)!
-            } else { break }
-        }
-        return streak
+        Stats.currentStreak(days: Set(entries.map { Calendar.current.startOfDay(for: $0.date) }))
     }
     
     var entriesThisWeek: Int {
@@ -166,9 +147,9 @@ struct TodayView: View {
                         }
                     }
                     
-                    // ── Weekly brief ─────────────────────────────────────────
+                    // ── Today's brief ────────────────────────────────────────
                     VStack(alignment: .leading, spacing: 10) {
-                        SectionLabel(text: "This Week's Brief")
+                        SectionLabel(text: "Today's Brief")
                         
                         SottoCard {
                             if let entry = todayEntry {
@@ -271,15 +252,6 @@ struct TodayView: View {
                 default: return "Still awake."
                 }
             }
-            
-            func weekStartString() -> String {
-                let formatter = DateFormatter()
-                formatter.dateFormat = "d MMM"
-                guard let weekStart = Calendar.current.date(
-                    from: Calendar.current.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
-                ) else { return "" }
-                return formatter.string(from: weekStart)
-            }
         }
         
         // MARK: - Stat pill
@@ -317,8 +289,10 @@ struct TodayView: View {
         
         #Preview("Today — light") {
             TodayView(showRecording: .constant(false))
+                .modelContainer(MockData.previewContainer)
         }
         #Preview("Today — dark") {
             TodayView(showRecording: .constant(false))
+                .modelContainer(MockData.previewContainer)
                 .preferredColorScheme(.dark)
         }

@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - Main container
 struct SottoMainView: View {
+    @Environment(ThemeManager.self) private var themeManager
     @State private var selectedTab = 0
     @State private var showRecording = false
 
@@ -38,19 +39,31 @@ struct SottoTabBar: View {
     var body: some View {
         HStack(spacing: 0) {
             TabBarButton(icon: "sun.max.fill", label: "Today",
-                         isSelected: selectedTab == 0) { selectedTab = 0 }
+                         isSelected: selectedTab == 0) {
+                select(0)
+            }
+
+            TabBarButton(icon: "clock.arrow.circlepath", label: "History",
+                         isSelected: selectedTab == 1) {
+                select(1)
+            }
+            .padding(.leading, 18)
 
             Spacer()
 
             // Centre microphone button
             Button {
+                Haptics.tap()
                 showRecording = true
             } label: {
                 ZStack {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [Color(hex: "#6366F1"), Color(hex: "#4F46E5")],
+                                colors: [
+                                    ThemeManager.shared.current.deep,
+                                    ThemeManager.shared.current.accent.opacity(0.85)
+                                ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -64,16 +77,24 @@ struct SottoTabBar: View {
                 }
             }
             .offset(y: -8)
+            .accessibilityLabel("Start recording")
 
             Spacer()
 
             TabBarButton(icon: "chart.xyaxis.line", label: "Insights",
-                         isSelected: selectedTab == 2) { selectedTab = 2 }
+                         isSelected: selectedTab == 2) {
+                select(2)
+            }
         }
         .padding(.horizontal, 40)
         .padding(.vertical, 12)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) { Divider() }
+    }
+
+    private func select(_ tab: Int) {
+        Haptics.tap()
+        selectedTab = tab
     }
 }
 

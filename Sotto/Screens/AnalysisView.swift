@@ -9,6 +9,9 @@ struct AnalysisView: View {
     let duration: Int
     let wordCount: Int
 
+    /// Set when this entry is a response to a question on another entry.
+    var replyTo: UUID? = nil
+
     @State private var scale: CGFloat = 0.85
     @State private var opacity: Double = 0.35
     @State private var rippleScale: CGFloat = 0.6
@@ -143,8 +146,8 @@ struct AnalysisView: View {
         let newEntry = JournalEntry(
             date: Date(),
             transcript: transcript,
-            summary: result?.followUpQuestion ?? "No summary available.",
-            duration: formatDuration(duration),
+            summary: result?.summary ?? "No summary available.",
+            duration: duration > 0 ? formatDuration(duration) : "—",
             wordCount: wordCount,
             primaryEmotion: result?.primaryEmotion ?? "Neutral",
             intensity: result?.intensity ?? 5,
@@ -152,12 +155,14 @@ struct AnalysisView: View {
             valence: result?.valence ?? 0.0,
             themes: result?.themes ?? [],
             followUpQuestion: result?.followUpQuestion ?? "What are your thoughts on this?",
-            hiddenObservation: result?.hiddenObservation ?? "No observation available."
+            hiddenObservation: result?.hiddenObservation ?? "No observation available.",
+            replyToEntryID: replyTo
         )
-        
+
         modelContext.insert(newEntry)
         try? modelContext.save()
-        
+        Haptics.success()
+
         onComplete()
     }
     

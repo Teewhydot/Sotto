@@ -21,8 +21,14 @@ final class JournalEntry {
     var themes: [String] = []
     var followUpQuestion: String = ""
     var hiddenObservation: String = ""
-    
-    init(date: Date = Date(), inputMode: String = "voice", transcript: String = "", summary: String = "", duration: String = "0:00", wordCount: Int = 0, isFavourite: Bool = false, primaryEmotion: String = "Neutral", intensity: Int = 5, energyLevel: Int = 5, valence: Double = 0.0, themes: [String] = [], followUpQuestion: String = "", hiddenObservation: String = "") {
+
+    // Private reflection
+    var note: String = ""
+
+    // Set when this entry was created by responding to a question on another entry.
+    var replyToEntryID: UUID?
+
+    init(date: Date = Date(), inputMode: String = "voice", transcript: String = "", summary: String = "", duration: String = "0:00", wordCount: Int = 0, isFavourite: Bool = false, primaryEmotion: String = "Neutral", intensity: Int = 5, energyLevel: Int = 5, valence: Double = 0.0, themes: [String] = [], followUpQuestion: String = "", hiddenObservation: String = "", note: String = "", replyToEntryID: UUID? = nil) {
         self.date = date
         self.inputMode = inputMode
         self.transcript = transcript
@@ -37,6 +43,8 @@ final class JournalEntry {
         self.themes = themes
         self.followUpQuestion = followUpQuestion
         self.hiddenObservation = hiddenObservation
+        self.note = note
+        self.replyToEntryID = replyToEntryID
     }
     
     var emotionColor: Color {

@@ -30,6 +30,12 @@ final class SpeechService {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
 
+    // Raw mono samples captured during recording — used for the WhisperKit
+    // refinement pass after the SFSpeech live transcript.
+    private let samplesLock = NSLock()
+    private var recordedSamples: [Float] = []
+    private var recordSampleRate: Double = 48_000
+
     // MARK: - Model storage (persistent — survives restarts and low-storage eviction)
     /// Application Support is never evicted by the OS, unlike Library/Caches.
     private static let modelStorageURL: URL = {
@@ -69,7 +75,7 @@ final class SpeechService {
 
         do {
             // Resolve the best model name for this device
-            let recommended = await WhisperKit.recommendedModels()
+            let recommended = WhisperKit.recommendedModels()
             let modelName = recommended.supported.first ?? recommended.disabled.first ?? "tiny.en"
             resolvedModelName = modelName
 
@@ -123,6 +129,7 @@ final class SpeechService {
     func unloadModel() {
         whisperKit = nil
         whisperState = isModelCached ? .downloaded : .notDownloaded
+        clearSamples()
     }
 
     // MARK: - Permissions
@@ -152,6 +159,7 @@ final class SpeechService {
         guard !isRecording else { return }
 
         transcript = ""
+        clearSamples()
         recognitionTask?.cancel()
         recognitionTask = nil
 
@@ -166,6 +174,7 @@ final class SpeechService {
 
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
+        recordSampleRate = recordingFormat.sampleRate
 
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         guard let recognitionRequest = recognitionRequest else {
@@ -174,8 +183,9 @@ final class SpeechService {
         }
         recognitionRequest.shouldReportPartialResults = true
 
-        // Always use SFSpeech for live partial results during recording
-        // Whisper will run a final high-accuracy pass when recording stops
+        // SFSpeech provides live partial results during recording;
+        // Whisper runs a final high-accuracy pass over the captured audio
+        // once recording stops (see refineTranscriptWithWhisper).
         recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             guard let self else { return }
             if let result = result {
@@ -187,8 +197,10 @@ final class SpeechService {
         }
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            self?.recognitionRequest?.append(buffer)
-            self?.updatePower(buffer: buffer)
+            guard let self else { return }
+            self.appendSamples(from: buffer)
+            recognitionRequest.append(buffer)
+            self.updatePower(buffer: buffer)
         }
 
         audioEngine.prepare()
@@ -208,6 +220,128 @@ final class SpeechService {
         recognitionRequest?.endAudio()
         isRecording = false
         try? AVAudioSession.sharedInstance().setActive(false)
+    }
+
+    // MARK: - Whisper refinement pass
+    /// Runs the on-device WhisperKit model over the recorded audio and, if it
+    /// produces a usable result, replaces the SFSpeech transcript with the more
+    /// accurate version. Returns true if the transcript was refined.
+    @discardableResult
+    func refineTranscriptWithWhisper() async -> Bool {
+        guard whisperKit != nil else { return false }
+        let samples = snapshotSamples()
+        // Skip absurdly short recordings (< 0.4 s of audio).
+        guard samples.count > Int(recordSampleRate * 0.4) else { return false }
+
+        let wavURL = Self.writeTemporaryWav(samples: samples, sampleRate: 16_000)
+        guard let wavURL else { return false }
+        defer { try? FileManager.default.removeItem(at: wavURL) }
+
+        do {
+            let results = try await whisperKit!.transcribe(audioPath: wavURL.path)
+            let text = results.map(\.text).joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, text.count >= transcript.trimmingCharacters(in: .whitespaces).count / 2 else {
+                return false
+            }
+            transcript = text
+            return true
+        } catch {
+            // Keep the SFSpeech transcript as a graceful fallback.
+            return false
+        }
+    }
+
+    // MARK: - Sample capture
+
+    private func appendSamples(from buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        let frames = Int(buffer.frameLength)
+        let slice = UnsafeBufferPointer(start: channelData, count: frames)
+        let copy = Array(slice)
+        samplesLock.lock()
+        recordedSamples.append(contentsOf: copy)
+        samplesLock.unlock()
+    }
+
+    private func snapshotSamples() -> [Float] {
+        samplesLock.lock()
+        defer { samplesLock.unlock() }
+        return recordedSamples
+    }
+
+    private func clearSamples() {
+        samplesLock.lock()
+        recordedSamples.removeAll(keepingCapacity: false)
+        samplesLock.unlock()
+    }
+
+    // MARK: - Audio conversion helpers
+
+    /// Naive linear-interpolation downsample to `targetRate` mono Float32.
+    static func resample(_ samples: [Float], from sourceRate: Double, to targetRate: Double) -> [Float] {
+        guard sourceRate > 0, targetRate > 0, !samples.isEmpty else { return [] }
+        guard sourceRate != targetRate else { return samples }
+        let ratio = sourceRate / targetRate
+        let outputCount = Int(Double(samples.count) / ratio)
+        guard outputCount > 0 else { return [] }
+        var output = [Float](repeating: 0, count: outputCount)
+        for i in 0..<outputCount {
+            let position = Double(i) * ratio
+            let index = Int(position)
+            let fraction = Float(position - Double(index))
+            if index + 1 < samples.count {
+                output[i] = samples[index] * (1 - fraction) + samples[index + 1] * fraction
+            } else {
+                output[i] = samples[index]
+            }
+        }
+        return output
+    }
+
+    /// Writes mono samples as a standards-compliant 16-bit PCM WAV file.
+    static func writeTemporaryWav(samples: [Float], sampleRate: Double) -> URL? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sotto-refine-\(UUID().uuidString).wav")
+
+        // Convert Float32 [-1, 1] to little-endian Int16 PCM.
+        var pcm = Data(capacity: samples.count * 2)
+        for sample in samples {
+            let clamped = max(-1.0, min(1.0, sample))
+            var value = Int16(clamped * Float(Int16.max)).littleEndian
+            withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
+        }
+
+        let header = Self.wavHeader(
+            dataByteCount: UInt32(pcm.count),
+            sampleRate: UInt32(sampleRate),
+            channels: 1,
+            bitsPerSample: 16
+        )
+
+        let out = NSMutableData()
+        out.append(header)
+        out.append(pcm)
+        do {
+            try out.write(to: url)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    private static func wavHeader(dataByteCount: UInt32, sampleRate: UInt32, channels: UInt32, bitsPerSample: UInt32) -> Data {
+        let byteRate = sampleRate * channels * bitsPerSample / 8
+        let blockAlign = channels * bitsPerSample / 8
+        func le32(_ v: UInt32) -> [UInt8] { [.init(v & 0xFF), .init((v >> 8) & 0xFF), .init((v >> 16) & 0xFF), .init((v >> 24) & 0xFF)] }
+        func le16(_ v: UInt32) -> [UInt8] { [.init(v & 0xFF), .init((v >> 8) & 0xFF)] }
+        var h: [UInt8] = []
+        h += Array("RIFF".utf8); h += le32(36 + dataByteCount); h += Array("WAVE".utf8)
+        h += Array("fmt ".utf8); h += le32(16)
+        h += le16(1) // PCM
+        h += le16(channels); h += le32(sampleRate); h += le32(byteRate); h += le16(blockAlign); h += le16(bitsPerSample)
+        h += Array("data".utf8); h += le32(dataByteCount)
+        return Data(h)
     }
 
     // MARK: - Helpers

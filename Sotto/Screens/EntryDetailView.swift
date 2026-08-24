@@ -1,20 +1,16 @@
 import SwiftUI
+import SwiftData
 
 struct EntryDetailView: View {
-    let entry: JournalEntry
+    @Bindable var entry: JournalEntry
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) var dismiss
+
     @State private var showFullTranscript = false
     @State private var showObservation = false
-    @State private var userNote = ""
-    @State private var isFavourite: Bool
     @State private var showRecording = false
     @State private var showShareSheet = false
     @State private var showDeleteAlert = false
-
-    init(entry: JournalEntry) {
-        self.entry = entry
-        _isFavourite = State(initialValue: entry.isFavourite)
-    }
 
     var body: some View {
         ScrollView {
@@ -34,6 +30,34 @@ struct EntryDetailView: View {
                         Text("·").foregroundStyle(.tertiary)
                         Text("\(entry.wordCount) words")
                             .font(.subheadline).foregroundStyle(.secondary)
+                    }
+
+                    if entry.replyToEntryID != nil {
+                        Label("Response to an earlier entry", systemImage: "arrow.turn.down.right")
+                            .font(.caption).fontDesign(.rounded)
+                            .foregroundStyle(Color.sottoAccent)
+                            .padding(.top, 4)
+                    }
+                }
+
+                // ── Summary card ──────────────────────────────────────────
+                if !entry.summary.isEmpty {
+                    SottoCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "text.alignleft")
+                                    .foregroundStyle(Color.sottoAccent)
+                                    .font(.caption)
+                                Text("Summary")
+                                    .font(.caption).fontWeight(.semibold)
+                                    .foregroundStyle(Color.sottoAccent)
+                            }
+                            Text(entry.summary)
+                                .font(.callout).fontDesign(.rounded)
+                                .foregroundStyle(.primary)
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
 
@@ -71,12 +95,14 @@ struct EntryDetailView: View {
                 }
 
                 // ── Themes ────────────────────────────────────────────────
-                VStack(alignment: .leading, spacing: 10) {
-                    SectionLabel(text: "Themes")
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(entry.themes, id: \.self) { theme in
-                                ThemeChip(label: theme)
+                if !entry.themes.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SectionLabel(text: "Themes")
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(entry.themes, id: \.self) { theme in
+                                    ThemeChip(label: theme)
+                                }
                             }
                         }
                     }
@@ -177,7 +203,7 @@ struct EntryDetailView: View {
                                 Divider()
                                 HStack(spacing: 16) {
                                     Label("\(entry.wordCount) words", systemImage: "text.alignleft")
-                                    Label("72% unique — expressive", systemImage: "sparkles")
+                                    Label(uniquenessDescription, systemImage: "sparkles")
                                 }
                                 .font(.caption2).foregroundStyle(.tertiary)
                                 .transition(.opacity)
@@ -190,7 +216,7 @@ struct EntryDetailView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     SectionLabel(text: "My Note")
                     SottoCard {
-                        TextField("Add a private note…", text: $userNote, axis: .vertical)
+                        TextField("Add a private note…", text: $entry.note, axis: .vertical)
                             .font(.callout).fontDesign(.rounded)
                             .lineLimit(3...6)
                     }
@@ -206,11 +232,13 @@ struct EntryDetailView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
-                    withAnimation(.spring(duration: 0.3)) { isFavourite.toggle() }
+                    Haptics.success()
+                    withAnimation(.spring(duration: 0.3)) { entry.isFavourite.toggle() }
                 } label: {
-                    Image(systemName: isFavourite ? "heart.fill" : "heart")
-                        .foregroundStyle(isFavourite ? .red : .primary)
+                    Image(systemName: entry.isFavourite ? "heart.fill" : "heart")
+                        .foregroundStyle(entry.isFavourite ? .red : .primary)
                 }
+                .accessibilityLabel(entry.isFavourite ? "Remove from favourites" : "Add to favourites")
 
                 Menu {
                     Button {
@@ -227,40 +255,74 @@ struct EntryDetailView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("Entry options")
             }
         }
         .fullScreenCover(isPresented: $showRecording) {
-            RecordingView()
+            RecordingView(replyTo: entry.id)
         }
         .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: [entry.transcript])
+            ShareSheet(items: [shareText])
         }
         .alert("Delete Entry?", isPresented: $showDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
-                dismiss()
+                deleteEntry()
             }
         } message: {
             Text("This entry will be permanently deleted.")
         }
     }
+
+    // MARK: - Actions
+
+    private func deleteEntry() {
+        Haptics.warning()
+        modelContext.delete(entry)
+        try? modelContext.save()
+        dismiss()
+    }
+
+    // MARK: - Derived values
+
+    private var shareText: String {
+        """
+        \(entry.date.formatted(date: .long, time: .omitted))
+
+        \(entry.transcript)
+        """
+    }
+
+    /// Real lexical diversity of the transcript, replacing the old hardcoded stat.
+    private var uniquenessDescription: String {
+        let diversity = Stats.lexicalDiversity(entry.transcript)
+        let percent = Int((diversity * 100).rounded())
+        let descriptor: String
+        switch diversity {
+        case 0.65...: descriptor = "richly varied"
+        case 0.45..<0.65: descriptor = "balanced"
+        default: descriptor = "focused"
+        }
+        return "\(percent)% unique words — \(descriptor)"
+    }
 }
 
-/*
-#Preview("Entry Detail — Reflective") {
+#Preview("Entry Detail — Relieved") {
     NavigationStack {
-        EntryDetailView(entry: mockEntries[0])
+        EntryDetailView(entry: MockData.sampleEntries[0])
     }
+    .modelContainer(MockData.previewContainer)
 }
-#Preview("Entry Detail — Grateful") {
+#Preview("Entry Detail — Exhausted") {
     NavigationStack {
-        EntryDetailView(entry: mockEntries[1])
+        EntryDetailView(entry: MockData.sampleEntries[1])
     }
+    .modelContainer(MockData.previewContainer)
 }
 #Preview("Entry Detail — dark") {
     NavigationStack {
-        EntryDetailView(entry: mockEntries[4])
+        EntryDetailView(entry: MockData.sampleEntries[2])
     }
+    .modelContainer(MockData.previewContainer)
     .preferredColorScheme(.dark)
 }
-*/

@@ -45,10 +45,14 @@ struct WaveformView: View {
 // MARK: - Recording View
 struct RecordingView: View {
     @Environment(\.dismiss) var dismiss
-    
+
+    /// Set when recording in response to a question on another entry.
+    var replyTo: UUID? = nil
+
     @State private var speechService = SpeechService()
     @State private var showSetup = false
-    
+    @State private var isRefining = false
+
     @State private var elapsedSeconds = 0
     @State private var showTranscriptCursor = true
     @State private var showAnalysis = false
@@ -88,6 +92,18 @@ struct RecordingView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 40)
                     }
+                } else if isRefining {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.7)
+                        Text("Refining transcription…")
+                            .font(.caption).fontWeight(.semibold).fontDesign(.rounded)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(.white.opacity(0.08), in: Capsule())
                 } else {
                     // Recording Indicator
                     HStack(spacing: 6) {
@@ -142,8 +158,8 @@ struct RecordingView: View {
                 HStack(spacing: 52) {
                     // Done
                     Button {
-                        speechService.stopRecording()
-                        showAnalysis = true
+                        Haptics.impact()
+                        finishRecording()
                     } label: {
                         VStack(spacing: 6) {
                             ZStack {
@@ -168,6 +184,7 @@ struct RecordingView: View {
                 transcript: speechService.transcript,
                 duration: elapsedSeconds,
                 wordCount: speechService.transcript.split(separator: " ").count,
+                replyTo: replyTo,
                 onComplete: {
                     showAnalysis = false
                     dismiss()
@@ -184,6 +201,7 @@ struct RecordingView: View {
         .fullScreenCover(isPresented: $showSetup) {
             WhisperSetupView(speechService: speechService) {
                 showSetup = false
+                Haptics.tap()
                 speechService.startRecording()
             }
         }
@@ -198,6 +216,7 @@ struct RecordingView: View {
                 await speechService.downloadAndLoad()
                 if speechService.whisperState == .ready {
                     speechService.startRecording()
+                    Haptics.impact()
                 } else {
                     // Load failed, still start with SFSpeech fallback
                     speechService.startRecording()
@@ -210,6 +229,20 @@ struct RecordingView: View {
         .onDisappear {
             speechService.stopRecording()
             speechService.unloadModel()
+        }
+    }
+
+    /// Stops capture, runs the Whisper refinement pass if available, then
+    /// hands off to analysis.
+    private func finishRecording() {
+        speechService.stopRecording()
+        Task { @MainActor in
+            if speechService.whisperState == .ready {
+                isRefining = true
+                await speechService.refineTranscriptWithWhisper()
+                isRefining = false
+            }
+            showAnalysis = true
         }
     }
 

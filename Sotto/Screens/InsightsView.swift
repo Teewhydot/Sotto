@@ -24,30 +24,47 @@ struct InsightsView: View {
     }
 
     var currentStreak: Int {
-        let calendar = Calendar.current
-        let startOfToday = calendar.startOfDay(for: Date())
-        let dates = Set(entries.map { calendar.startOfDay(for: $0.date) }).sorted(by: >)
-        guard !dates.isEmpty else { return 0 }
-        var streak = 0
-        var expectedDate = startOfToday
-        if !dates.contains(startOfToday) {
-            if dates.contains(calendar.date(byAdding: .day, value: -1, to: startOfToday)!) {
-                expectedDate = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
-            } else { return 0 }
-        }
-        for date in dates {
-            if date == expectedDate {
-                streak += 1
-                expectedDate = calendar.date(byAdding: .day, value: -1, to: expectedDate)!
-            } else { break }
-        }
-        return streak
+        Stats.currentStreak(days: Set(entries.map { Calendar.current.startOfDay(for: $0.date) }))
     }
     var totalEntries: Int { entries.count }
     var avgWordsPerEntry: Int {
         guard !entries.isEmpty else { return 0 }
         let totalWords = entries.reduce(0) { $0 + $1.wordCount }
         return totalWords / entries.count
+    }
+
+    // Real pattern computation over the selected period
+    var dominantEmotion: String? {
+        Stats.dominant(filteredEntries.map(\.primaryEmotion))
+    }
+    var dominantEmotionShare: Double {
+        guard let emotion = dominantEmotion else { return 0 }
+        return Stats.share(of: emotion, in: filteredEntries.map(\.primaryEmotion))
+    }
+    var topThemesThisPeriod: [String] {
+        Stats.topThemes(filteredEntries.map(\.themes), limit: 3)
+    }
+    var valenceDirection: String? {
+        let values = filteredEntries.map(\.valence)
+        guard values.count >= 3 else { return nil }
+        let mid = values.count / 2
+        let older = values.prefix(mid).reduce(0,+) / Double(mid)
+        let recent = values.suffix(from: mid).reduce(0,+) / Double(values.count - mid)
+        if recent - older > 0.1 { return "brightening" }
+        if older - recent > 0.1 { return "cooling" }
+        return "steady"
+    }
+
+    private func patternText(for emotion: String) -> String {
+        let percent = Int((dominantEmotionShare * 100).rounded())
+        let themes = topThemesThisPeriod
+        var text = "\(percent)% of your \(filteredEntries.count) entries this period read as \(emotion.lowercased())"
+        if let direction = valenceDirection, !themes.isEmpty {
+            text += ", with your overall tone \(direction). Recurring themes: "
+            text += themes.map(\.localizedLowercase).joined(separator: ", ")
+            text += "."
+        }
+        return text
     }
 
     var body: some View {
@@ -135,9 +152,9 @@ struct InsightsView: View {
                         }
                     }
 
-                    // ── Weekly brief summary ──────────────────────────────
+                    // ── Pattern summary ───────────────────────────────────
                     VStack(alignment: .leading, spacing: 12) {
-                        SectionLabel(text: "This Week")
+                        SectionLabel(text: "This \(selectedPeriod == "Week" ? "Week" : selectedPeriod == "Month" ? "Month" : "Quarter")")
                         SottoCard {
                             VStack(alignment: .leading, spacing: 14) {
                                 HStack {
@@ -147,24 +164,32 @@ struct InsightsView: View {
                                         .font(.caption).fontWeight(.semibold)
                                         .foregroundStyle(Color.sottoAccent)
                                 }
-                                Text(entries.isEmpty ? "No patterns yet." : "You've been leaning towards \(entries.first!.primaryEmotion) lately.")
-                                    .font(.callout).fontDesign(.rounded)
-                                    .foregroundStyle(.primary)
-                                    .lineSpacing(4)
 
-                                Divider()
+                                if filteredEntries.isEmpty {
+                                    Text("No entries in this period yet.")
+                                        .font(.callout).fontDesign(.rounded)
+                                        .foregroundStyle(.secondary)
+                                        .lineSpacing(4)
+                                } else if let emotion = dominantEmotion {
+                                    Text(patternText(for: emotion))
+                                        .font(.callout).fontDesign(.rounded)
+                                        .foregroundStyle(.primary)
+                                        .lineSpacing(4)
 
-                                HStack {
-                                    Image(systemName: "lightbulb.fill")
-                                        .foregroundStyle(Color(hex: "#F59E0B"))
-                                    Text("Invitation")
-                                        .font(.caption).fontWeight(.semibold)
-                                        .foregroundStyle(Color(hex: "#F59E0B"))
+                                    Divider()
+
+                                    HStack {
+                                        Image(systemName: "lightbulb.fill")
+                                            .foregroundStyle(Color(hex: "#F59E0B"))
+                                        Text("Invitation")
+                                            .font(.caption).fontWeight(.semibold)
+                                            .foregroundStyle(Color(hex: "#F59E0B"))
+                                    }
+                                    Text("Take a moment to reflect on what sits beneath the \(emotion.lowercased()) feelings.")
+                                        .font(.callout).fontDesign(.rounded).italic()
+                                        .foregroundStyle(.secondary)
+                                        .lineSpacing(4)
                                 }
-                                Text(entries.isEmpty ? "Keep journaling to unlock deeper insights." : "Take a moment to reflect on your \(entries.first!.primaryEmotion) feelings.")
-                                    .font(.callout).fontDesign(.rounded).italic()
-                                    .foregroundStyle(.secondary)
-                                    .lineSpacing(4)
                             }
                         }
                     }
@@ -505,8 +530,10 @@ struct FlexibleTagLayout: Layout {
 
 #Preview("Insights") {
     InsightsView()
+        .modelContainer(MockData.previewContainer)
 }
 #Preview("Insights — dark") {
     InsightsView()
+        .modelContainer(MockData.previewContainer)
         .preferredColorScheme(.dark)
 }

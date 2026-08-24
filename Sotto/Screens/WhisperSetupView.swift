@@ -61,7 +61,7 @@ struct WhisperSetupView: View {
 
                 // ── Model details ─────────────────────────────────────────
                 HStack(spacing: 20) {
-                    ModelInfoPill(icon: "internaldrive", label: "~39 MB")
+                    ModelInfoPill(icon: "internaldrive", label: "~40–80 MB")
                     ModelInfoPill(icon: "lock.shield", label: "On-device")
                     ModelInfoPill(icon: "arrow.down.circle", label: "One-time")
                 }

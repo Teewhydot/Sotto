@@ -7,19 +7,46 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		41FAC2983009818000E4E2CB /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 41FAC2973009818000E4E2CB /* Secrets.xcconfig */; };
 		6B0EDF321303B30FEC9139E7 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = A512AD77F9DE2A0AD8C93934 /* WhisperKit */; };
 		D8041B38DD0ED190B1374C88 /* GoogleGenerativeAI in Frameworks */ = {isa = PBXBuildFile; productRef = 27B2896126244B45AC2A3242 /* GoogleGenerativeAI */; };
 /* End PBXBuildFile section */
+	
+	/* Begin PBXContainerItemProxy section */
+		41AA00093009818000E4E2CB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 41D96F3E3007B43A00BDA028 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 41D96F453007B43A00BDA028;
+			remoteInfo = Sotto;
+		};
+	/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		41AA00083009818000E4E2CB /* SottoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SottoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		41D96F463007B43A00BDA028 /* Sotto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sotto.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		41FAC2973009818000E4E2CB /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		41BB00013009818000E4E2CB /* Exceptions for "Sotto" folder in "Sotto" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 41D96F453007B43A00BDA028 /* Sotto */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		41AA00013009818000E4E2CB /* SottoTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SottoTests;
+			sourceTree = "<group>";
+		};
 		41D96F483007B43A00BDA028 /* Sotto */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				41BB00013009818000E4E2CB /* Exceptions for "Sotto" folder in "Sotto" target */,
+			);
 			path = Sotto;
 			sourceTree = "<group>";
 		};
@@ -27,6 +54,13 @@
 
 /* Begin PBXFrameworksBuildPhase section */
 		41D96F433007B43A00BDA028 /* Frameworks */ = {
+		41AA00073009818000E4E2CB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -43,6 +77,7 @@
 			children = (
 				41FAC2973009818000E4E2CB /* Secrets.xcconfig */,
 				41D96F483007B43A00BDA028 /* Sotto */,
+				41AA00013009818000E4E2CB /* SottoTests */,
 				41D96F473007B43A00BDA028 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -51,6 +86,7 @@
 			isa = PBXGroup;
 			children = (
 				41D96F463007B43A00BDA028 /* Sotto.app */,
+				41AA00083009818000E4E2CB /* SottoTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -58,6 +94,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		41AA00023009818000E4E2CB /* SottoTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 41AA00033009818000E4E2CB /* Build configuration list for PBXNativeTarget "SottoTests" */;
+			buildPhases = (
+				41AA00063009818000E4E2CB /* Sources */,
+				41AA00073009818000E4E2CB /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				41AA000A3009818000E4E2CB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				41AA00013009818000E4E2CB /* SottoTests */,
+			);
+			name = SottoTests;
+			packageProductDependencies = (
+			);
+			productName = SottoTests;
+			productReference = 41AA00083009818000E4E2CB /* SottoTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		41D96F453007B43A00BDA028 /* Sotto */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 41D96F513007B43B00BDA028 /* Build configuration list for PBXNativeTarget "Sotto" */;
@@ -95,6 +153,10 @@
 					41D96F453007B43A00BDA028 = {
 						CreatedOnToolsVersion = 26.3;
 					};
+					41AA00023009818000E4E2CB = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 41D96F453007B43A00BDA028;
+					};
 				};
 			};
 			buildConfigurationList = 41D96F413007B43A00BDA028 /* Build configuration list for PBXProject "Sotto" */;
@@ -116,6 +178,7 @@
 			projectRoot = "";
 			targets = (
 				41D96F453007B43A00BDA028 /* Sotto */,
+				41AA00023009818000E4E2CB /* SottoTests */,
 			);
 		};
 /* End PBXProject section */
@@ -125,13 +188,19 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				41FAC2983009818000E4E2CB /* Secrets.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		41AA00063009818000E4E2CB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		41D96F423007B43A00BDA028 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -140,6 +209,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+	
+	/* Begin PBXTargetDependency section */
+		41AA000A3009818000E4E2CB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 41D96F453007B43A00BDA028 /* Sotto */;
+			targetProxy = 41AA00093009818000E4E2CB /* PBXContainerItemProxy */;
+		};
+	/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		41D96F4F3007B43B00BDA028 /* Debug */ = {
@@ -265,6 +342,7 @@
 			baseConfigurationReference = 41FAC2973009818000E4E2CB /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "Dark Light";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -274,7 +352,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_GeminiAPIKey = "$(GEMINI_API_KEY)";
+				INFOPLIST_FILE = Sotto/Info.plist;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Sotto uses Face ID to keep your journal private.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sotto needs access to your microphone to record your journal entries.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Sotto needs access to speech recognition to transcribe your audio.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -297,14 +376,13 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
-				XROS_DEPLOYMENT_TARGET = 26.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -313,6 +391,7 @@
 			baseConfigurationReference = 41FAC2973009818000E4E2CB /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "Dark Light";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -322,7 +401,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_GeminiAPIKey = "$(GEMINI_API_KEY)";
+				INFOPLIST_FILE = Sotto/Info.plist;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Sotto uses Face ID to keep your journal private.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sotto needs access to your microphone to record your journal entries.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Sotto needs access to speech recognition to transcribe your audio.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -345,18 +425,65 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,7";
-				XROS_DEPLOYMENT_TARGET = 26.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
-/* End XCBuildConfiguration section */
+/* End XCBuildConfiguration section */		41AA00043009818000E4E2CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 41FAC2973009818000E4E2CB /* Secrets.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LS988NT5HQ;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ng.com.sirteefyapps.SottoTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Sotto.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Sotto";
+			};
+			name = Debug;
+		};
+		41AA00053009818000E4E2CB /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 41FAC2973009818000E4E2CB /* Secrets.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LS988NT5HQ;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ng.com.sirteefyapps.SottoTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Sotto.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Sotto";
+			};
+			name = Release;
+		};
+
 
 /* Begin XCConfigurationList section */
 		41D96F413007B43A00BDA028 /* Build configuration list for PBXProject "Sotto" */ = {
@@ -377,7 +504,16 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-/* End XCConfigurationList section */
+/* End XCConfigurationList section */		41AA00033009818000E4E2CB /* Build configuration list for PBXNativeTarget "SottoTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				41AA00043009818000E4E2CB /* Debug */,
+				41AA00053009818000E4E2CB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+
 
 /* Begin XCRemoteSwiftPackageReference section */
 		1056FE38FD6FAEE7C0875FD9 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {

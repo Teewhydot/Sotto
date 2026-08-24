@@ -8,8 +8,7 @@ struct HistoryView: View {
 
     @State private var searchText = ""
     @State private var selectedFilter = "All"
-    @State private var showDeleteAlert = false
-    @State private var showFavouriteAlert = false
+    @State private var pendingDelete: JournalEntry?
     let filters = ["All", "Voice", "Text", "Favourites"]
 
     var filteredEntries: [JournalEntry] {
@@ -99,7 +98,7 @@ struct HistoryView: View {
                                 .swipeActions(edge: .leading) {
                                     Button {
                                         entry.isFavourite.toggle()
-                                        showFavouriteAlert = true
+                                        Haptics.success()
                                     } label: {
                                         Label("Favourite", systemImage: "heart.fill")
                                     }
@@ -107,8 +106,7 @@ struct HistoryView: View {
                                 }
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) {
-                                        modelContext.delete(entry)
-                                        showDeleteAlert = true
+                                        pendingDelete = entry
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
@@ -125,14 +123,26 @@ struct HistoryView: View {
             .listStyle(.plain)
             .navigationTitle("Entries")
             .searchable(text: $searchText, prompt: "Search entries…")
-            .alert("Delete Entry?", isPresented: $showDeleteAlert) {
-                Button("Cancel", role: .cancel) { }
-                Button("Delete", role: .destructive) { }
+            .alert(
+                "Delete Entry?",
+                isPresented: Binding(
+                    get: { pendingDelete != nil },
+                    set: { if !$0 { pendingDelete = nil } }
+                )
+            ) {
+                Button("Cancel", role: .cancel) {
+                    pendingDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let entry = pendingDelete {
+                        Haptics.warning()
+                        modelContext.delete(entry)
+                        try? modelContext.save()
+                    }
+                    pendingDelete = nil
+                }
             } message: {
                 Text("This entry will be permanently deleted.")
-            }
-            .alert("Added to Favourites", isPresented: $showFavouriteAlert) {
-                Button("OK", role: .cancel) { }
             }
         }
     }
@@ -174,6 +184,10 @@ struct EntryRowView: View {
                     Image(systemName: "heart.fill")
                         .font(.caption2).foregroundStyle(.red)
                 }
+                if entry.replyToEntryID != nil {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.caption2).foregroundStyle(Color.sottoAccent)
+                }
             }
         }
         .padding(.vertical, 8)
@@ -182,8 +196,10 @@ struct EntryRowView: View {
 
 #Preview("History") {
     HistoryView()
+        .modelContainer(MockData.previewContainer)
 }
 #Preview("History — dark") {
     HistoryView()
+        .modelContainer(MockData.previewContainer)
         .preferredColorScheme(.dark)
 }
