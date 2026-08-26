@@ -52,7 +52,10 @@ final class AppLockManager {
 // MARK: - Lock screen overlay
 
 struct LockScreenView: View {
-    @Environment(AppLockManager.self) private var lockManager
+    /// Passed directly rather than via @Environment: the manager is created at
+    /// the app root and this view renders from a root overlay, where an
+    /// environment lookup failure is a fatal crash.
+    var lockManager: AppLockManager
 
     var body: some View {
         ZStack {

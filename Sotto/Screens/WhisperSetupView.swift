@@ -3,15 +3,12 @@
 //
 
 import SwiftUI
-import Combine
 
 struct WhisperSetupView: View {
     @Bindable var speechService: SpeechService
     var onComplete: () -> Void
 
     @State private var animatePulse = false
-    @State private var shimmerOffset: CGFloat = -1.0
-    private let shimmerTimer = Timer.publish(every: 0.016, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
@@ -89,48 +86,40 @@ struct WhisperSetupView: View {
                         }
                         .padding(.horizontal, 28)
 
-                    case .downloading:
+                    case .downloading(let progress):
                         VStack(spacing: 14) {
                             HStack {
                                 Text("Downloading model…")
                                     .font(.subheadline).fontDesign(.rounded)
                                     .foregroundStyle(.white.opacity(0.8))
                                 Spacer()
-                                ProgressView()
-                                    .tint(Color.sottoAccent)
-                                    .scaleEffect(0.8)
+                                Text("\(Int((progress * 100).rounded()))%")
+                                    .font(.subheadline).fontWeight(.semibold).fontDesign(.rounded)
+                                    .monospacedDigit()
+                                    .foregroundStyle(Color.sottoAccent)
+                                    .contentTransition(.numericText())
                             }
                             .padding(.horizontal, 28)
 
-                            // Indeterminate shimmer bar
+                            // Determinate progress bar
                             GeometryReader { geo in
                                 ZStack(alignment: .leading) {
                                     // Track
                                     Capsule()
                                         .fill(.white.opacity(0.1))
                                         .frame(height: 6)
-                                    // Shimmer highlight
+                                    // Fill
                                     Capsule()
                                         .fill(
                                             LinearGradient(
-                                                colors: [
-                                                    Color.sottoAccent.opacity(0.0),
-                                                    Color.sottoAccent,
-                                                    Color(hex: "#F2CC8F"),
-                                                    Color.sottoAccent.opacity(0.0)
-                                                ],
+                                                colors: [Color.sottoAccent, Color(hex: "#F2CC8F")],
                                                 startPoint: .leading,
                                                 endPoint: .trailing
                                             )
                                         )
-                                        .frame(width: geo.size.width * 0.45, height: 6)
-                                        .offset(x: shimmerOffset * geo.size.width)
-                                        .onReceive(shimmerTimer) { _ in
-                                            shimmerOffset += 0.012
-                                            if shimmerOffset > 1.0 { shimmerOffset = -0.45 }
-                                        }
+                                        .frame(width: max(6, geo.size.width * CGFloat(progress)), height: 6)
+                                        .animation(.easeOut(duration: 0.2), value: progress)
                                 }
-                                .clipped()
                             }
                             .frame(height: 6)
                             .padding(.horizontal, 28)
@@ -228,7 +217,7 @@ struct WhisperSetupView: View {
 }
 
 // MARK: - Supporting view
-private struct ModelInfoPill: View {
+struct ModelInfoPill: View {
     let icon: String
     let label: String
 

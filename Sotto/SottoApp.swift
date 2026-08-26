@@ -26,7 +26,7 @@ struct SottoApp: App {
             .tint(themeManager.current.accent)
             .overlay {
                 if lockManager.isLocked {
-                    LockScreenView()
+                    LockScreenView(lockManager: lockManager)
                         .transition(.opacity)
                         .zIndex(10)
                 }

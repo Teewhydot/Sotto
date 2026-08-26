@@ -14,7 +14,7 @@ enum WhisperModelState: Equatable {
     case failed(String)
 }
 
-@Observable
+    @Observable
 final class SpeechService {
     // MARK: - Public State
     var recordingState: ViewState<Bool> = .initial
@@ -22,6 +22,23 @@ final class SpeechService {
     var isRecording: Bool = false
     var audioPower: Float = 0.0
     var whisperState: WhisperModelState = .notDownloaded
+
+    // MARK: - Live cleanup state
+    /// LLM-polished text for the dictation chunks finalized so far.
+    private(set) var cleanedTranscript: String = ""
+    /// Raw recognizer output that has been harvested for cleaning already.
+    private var finalizedRawPrefix = ""
+    private var cleanupChain: Task<Void, Never>?
+
+    /// What the user sees while dictating: polished finalized chunks followed
+    /// by the raw in-flight partial that hasn't been finalized yet.
+    var displayTranscript: String {
+        let tail = transcript.hasPrefix(finalizedRawPrefix)
+            ? String(transcript.dropFirst(finalizedRawPrefix.count))
+            : transcript
+        if cleanedTranscript.isEmpty { return tail }
+        return tail.isEmpty ? cleanedTranscript : cleanedTranscript + "\n" + tail
+    }
 
     // MARK: - Private
     private var whisperKit: WhisperKit?
@@ -50,7 +67,7 @@ final class SpeechService {
     private var resolvedModelName: String?
 
     /// True when model files exist in our persistent Application Support directory.
-    var isModelCached: Bool {
+    static var isModelCached: Bool {
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(
             at: Self.modelStorageURL,
@@ -62,6 +79,51 @@ final class SpeechService {
             fm.fileExists(atPath: url.path, isDirectory: &isDir)
             return isDir.boolValue
         }
+    }
+
+    /// Total bytes on disk of all cached Whisper models.
+    static var whisperModelsSizeBytes: Int64 {
+        directorySize(modelStorageURL)
+    }
+
+    /// Deletes every cached Whisper model. They re-download on next use.
+    static func deleteCachedWhisperModels() {
+        let fm = FileManager.default
+        try? fm.removeItem(at: modelStorageURL)
+        try? fm.createDirectory(at: modelStorageURL, withIntermediateDirectories: true)
+    }
+
+    private static func directorySize(_ url: URL) -> Int64 {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            total += Int64((try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        return total
+    }
+
+    /// Locates an already-downloaded folder for `modelName`, wherever the Hub
+    /// layout placed it (handles flat and huggingface-style nesting).
+    private func findCachedModelFolder(for modelName: String) -> URL? {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: Self.modelStorageURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return nil }
+        for case let url as URL in enumerator {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { continue }
+            if url.lastPathComponent == modelName || url.lastPathComponent.hasSuffix(modelName) {
+                return url
+            }
+        }
+        return nil
     }
 
     // MARK: - Download + Load
@@ -79,44 +141,50 @@ final class SpeechService {
             let modelName = recommended.supported.first ?? recommended.disabled.first ?? "tiny.en"
             resolvedModelName = modelName
 
-            let modelDir = Self.modelStorageURL.appendingPathComponent(modelName)
-            let alreadyOnDisk = FileManager.default.fileExists(atPath: modelDir.path)
-
-            if alreadyOnDisk {
+            if let cachedFolder = findCachedModelFolder(for: modelName) {
                 // Cached — load straight from disk, no network at all
                 whisperState = .loading
                 let kit = try await WhisperKit(
                     model: modelName,
-                    modelFolder: modelDir.path,
+                    modelFolder: cachedFolder.path,
                     verbose: false,
                     logLevel: .none,
+                    prewarm: false,
                     load: true,
                     download: false
                 )
                 self.whisperKit = kit
                 whisperState = .ready
             } else {
-                // First time — download into Application Support
+                // First time — download into Application Support with live progress
                 whisperState = .downloading(0)
+                var lastReportedFraction: Float = -1
+                let downloadedFolder = try await WhisperKit.download(
+                    variant: modelName,
+                    downloadBase: Self.modelStorageURL,
+                    useBackgroundSession: true,
+                    progressCallback: { [weak self] progress in
+                        let fraction = Float(progress.fractionCompleted)
+                        // Coalesce rapid callbacks to keep SwiftUI updates cheap
+                        guard fraction - lastReportedFraction >= 0.002 || fraction >= 1 else { return }
+                        lastReportedFraction = fraction
+                        Task { @MainActor in
+                            self?.whisperState = .downloading(min(max(fraction, 0), 1))
+                        }
+                    }
+                )
+
+                // Download finished — load into memory
+                whisperState = .loading
                 let kit = try await WhisperKit(
                     model: modelName,
-                    downloadBase: Self.modelStorageURL,
+                    modelFolder: downloadedFolder.path,
                     verbose: false,
                     logLevel: .none,
                     prewarm: false,
                     load: true,
-                    download: true,
-                    useBackgroundDownloadSession: true
+                    download: false
                 )
-                kit.modelStateCallback = { [weak self] (_: ModelState?, newState: ModelState) in
-                    Task { @MainActor in
-                        switch newState {
-                        case .loading: self?.whisperState = .loading
-                        case .loaded:  self?.whisperState = .ready
-                        default: break
-                        }
-                    }
-                }
                 self.whisperKit = kit
                 whisperState = .ready
             }
@@ -128,7 +196,7 @@ final class SpeechService {
 
     func unloadModel() {
         whisperKit = nil
-        whisperState = isModelCached ? .downloaded : .notDownloaded
+        whisperState = Self.isModelCached ? .downloaded : .notDownloaded
         clearSamples()
     }
 
@@ -162,6 +230,10 @@ final class SpeechService {
         clearSamples()
         recognitionTask?.cancel()
         recognitionTask = nil
+        cleanedTranscript = ""
+        finalizedRawPrefix = ""
+        cleanupChain?.cancel()
+        cleanupChain = nil
 
         let audioSession = AVAudioSession.sharedInstance()
         do {
@@ -190,6 +262,9 @@ final class SpeechService {
             guard let self else { return }
             if let result = result {
                 self.transcript = result.bestTranscription.formattedString
+                if result.isFinal {
+                    self.harvestFinalChunk()
+                }
             }
             if error != nil {
                 self.stopRecording()
@@ -220,6 +295,82 @@ final class SpeechService {
         recognitionRequest?.endAudio()
         isRecording = false
         try? AVAudioSession.sharedInstance().setActive(false)
+    }
+
+    // MARK: - Live transcript cleanup
+
+    /// Called when the recognizer finalizes an utterance (natural pause).
+    /// The newly-finalized chunk is queued for LLM cleanup in order.
+    private func harvestFinalChunk() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.transcript.hasPrefix(self.finalizedRawPrefix) else {
+                // Recognizer revised earlier text unexpectedly — skip this
+                // round; the authoritative cleanup happens when recording ends.
+                return
+            }
+            let delta = String(self.transcript.dropFirst(self.finalizedRawPrefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            self.finalizedRawPrefix = self.transcript
+            guard !delta.isEmpty else { return }
+
+            let previous = self.cleanupChain
+            self.cleanupChain = Task { @MainActor in
+                await previous?.value
+                let cleaned = await self.cleanDelta(delta)
+                guard !cleaned.isEmpty else { return }
+                if self.cleanedTranscript.isEmpty {
+                    self.cleanedTranscript = cleaned
+                } else {
+                    self.cleanedTranscript += "\n" + cleaned
+                }
+            }
+        }
+    }
+
+    /// Cleans one finalized dictation chunk: local LLM when loaded, quick
+    /// heuristics otherwise (and kicks off model download for next time).
+    private func cleanDelta(_ delta: String) async -> String {
+        if await LocalInsightEngine.shared.isReady() {
+            if let cleaned = try? await LocalInsightEngine.shared.clean(delta), !cleaned.isEmpty {
+                return cleaned
+            }
+        } else {
+            Task.detached {
+                try? await LocalInsightEngine.shared.prepare { _ in }
+            }
+        }
+        return NLInsightEngine.lightCleanup(delta)
+    }
+
+    /// Authoritative cleanup of the full transcript once recording stops.
+    /// Replaces `transcript` with the polished version, guarding against the
+    /// LLM silently truncating long entries.
+    func cleanTranscriptNow() async {
+        let raw = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+
+        var candidate: String?
+        if await LocalInsightEngine.shared.isReady() {
+            candidate = try? await LocalInsightEngine.shared.clean(raw)
+        } else {
+            Task.detached {
+                try? await LocalInsightEngine.shared.prepare { _ in }
+            }
+        }
+
+        let fallback = NLInsightEngine.lightCleanup(raw)
+        let accepted: String
+        if let candidate, !candidate.isEmpty,
+           Double(candidate.count) >= Double(raw.count) * 0.4 {
+            accepted = candidate
+        } else {
+            accepted = fallback
+        }
+
+        transcript = accepted
+        cleanedTranscript = accepted
+        finalizedRawPrefix = accepted
     }
 
     // MARK: - Whisper refinement pass

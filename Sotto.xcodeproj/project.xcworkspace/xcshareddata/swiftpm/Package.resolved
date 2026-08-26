@@ -1,13 +1,22 @@
 {
-  "originHash" : "81271e1f755e2056a6f0a7233f538c80f66da76ffa7e041e632e4b976f1772f0",
+  "originHash" : "8970f8086059df71b841717075305751f29df07a30e9d7823a0b71eb8539ee16",
   "pins" : [
     {
-      "identity" : "generative-ai-swift",
+      "identity" : "mlx-swift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/google-gemini/generative-ai-swift",
+      "location" : "https://github.com/ml-explore/mlx-swift",
       "state" : {
-        "revision" : "44b8ce120425f9cf53ca756f3434ca2c2696f8bd",
-        "version" : "0.5.6"
+        "revision" : "dc43e62d7055353c7f99fa071a4e71d29dfddc44",
+        "version" : "0.31.4"
+      }
+    },
+    {
+      "identity" : "mlx-swift-lm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ml-explore/mlx-swift-lm",
+      "state" : {
+        "revision" : "bd4b7434e6bdb588c7ef55706ff8904cb7fd4c57",
+        "version" : "3.31.4"
       }
     },
     {
@@ -53,6 +62,24 @@
       "state" : {
         "revision" : "9cde95abb5a01c6428137a5f9b50a2b994b53c25",
         "version" : "2.4.1"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "79e4b74a295b6eb74a8b585e3a39d29e70c1dbd1",
+        "version" : "603.0.2"
       }
     },
     {

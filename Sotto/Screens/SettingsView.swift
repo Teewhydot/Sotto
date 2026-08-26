@@ -24,6 +24,12 @@ struct SettingsView: View {
     @State private var showEditProfile = false
     @State private var nameDraft = ""
     @State private var faceIDUnavailableMessage: String?
+    @State private var pendingRemoval: RemovalTarget?
+
+    private enum RemovalTarget {
+        case whisper
+        case insight
+    }
 
     let notificationSounds = ["Whisper", "Chime", "Subtle"]
     let iconOptions = ["Default", "Dark", "Light"]
@@ -34,9 +40,41 @@ struct SettingsView: View {
                 profileSection
                 remindersSection
                 appearanceSection
+                modelsSection
                 privacySection
                 aboutSection
                 dangerSection
+            }
+            // Keep the last rows (Delete all data) clear of the floating
+            // custom tab bar (~66 pt tall) overlaying this screen.
+            .contentMargins(.bottom, 88, for: .scrollContent)
+            .confirmationDialog(
+                "Remove transcription model?",
+                isPresented: Binding(
+                    get: { pendingRemoval == .whisper },
+                    set: { if !$0 { pendingRemoval = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    ModelLibrary.shared.deleteWhisperModels()
+                }
+            } message: {
+                Text("Dictation will fall back to Apple's speech recognizer. The model re-downloads next time you record.")
+            }
+            .confirmationDialog(
+                "Remove insights model?",
+                isPresented: Binding(
+                    get: { pendingRemoval == .insight },
+                    set: { if !$0 { pendingRemoval = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    Task { await ModelLibrary.shared.deleteInsightModel() }
+                }
+            } message: {
+                Text("Insights and transcript cleanup will use simpler on-device heuristics. The model re-downloads next time it's needed.")
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -215,6 +253,107 @@ struct SettingsView: View {
                 Label("Haptic feedback", systemImage: "hand.tap.fill")
             }
             .tint(Color.sottoAccent)
+        }
+    }
+
+    // MARK: On-device models
+
+    private var modelsSection: some View {
+        Section("On-Device Models") {
+            let library = ModelLibrary.shared
+
+            modelRow(
+                title: "Transcription",
+                subtitle: "On-device speech-to-text",
+                isCached: library.whisperCached,
+                sizeBytes: library.whisperSizeBytes,
+                isBusy: false,
+                removeTarget: .whisper,
+                downloadAction: nil
+            )
+
+            modelRow(
+                title: "Smart Insights",
+                subtitle: "Transcript cleanup & reflections",
+                isCached: library.isInsightDownloading || library.insightCached || library.insightReady,
+                sizeBytes: library.insightSizeBytes,
+                isBusy: library.isInsightDownloading,
+                removeTarget: .insight,
+                downloadAction: { Task { await library.downloadInsightModel() } }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func modelRow(
+        title: String,
+        subtitle: String,
+        isCached: Bool,
+        sizeBytes: Int64,
+        isBusy: Bool,
+        removeTarget: RemovalTarget,
+        downloadAction: (() -> Void)?
+    ) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body).fontDesign(.rounded)
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+
+            if isBusy {
+                Text("\(Int(((ModelLibrary.shared.insightDownloadProgress ?? 0) * 100).rounded()))%")
+                    .font(.caption).fontWeight(.semibold).monospacedDigit()
+                    .foregroundStyle(Color.sottoAccent)
+            } else if isCached {
+                Label("Ready", systemImage: "checkmark.circle.fill")
+                    .font(.caption).fontWeight(.semibold)
+                    .foregroundStyle(Color(hex: "#10B981"))
+            } else {
+                Text("Not downloaded")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        if isBusy {
+            HStack(spacing: 10) {
+                ProgressView(value: ModelLibrary.shared.insightDownloadProgress ?? 0)
+                    .tint(Color.sottoAccent)
+                if let bytes = sizeBytes > 0 ? sizeBytes : nil {
+                    Text(ModelLibrary.formattedSize(bytes))
+                        .font(.caption2).monospacedDigit()
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        } else if isCached {
+            Button(role: .destructive) {
+                pendingRemoval = removeTarget
+            } label: {
+                HStack {
+                    Text("Remove model")
+                    Spacer()
+                    if sizeBytes > 0 {
+                        Text(ModelLibrary.formattedSize(sizeBytes))
+                            .font(.caption).monospacedDigit()
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+        } else if let downloadAction {
+            Button {
+                downloadAction()
+            } label: {
+                HStack {
+                    Text("Download model")
+                    Spacer()
+                    Image(systemName: "arrow.down.circle")
+                }
+                .foregroundStyle(Color.sottoAccent)
+            }
         }
     }
 

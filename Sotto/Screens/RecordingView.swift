@@ -51,7 +51,9 @@ struct RecordingView: View {
 
     @State private var speechService = SpeechService()
     @State private var showSetup = false
+    @State private var showInsightSetup = false
     @State private var isRefining = false
+    @State private var isCleaning = false
 
     @State private var elapsedSeconds = 0
     @State private var showTranscriptCursor = true
@@ -92,12 +94,12 @@ struct RecordingView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 40)
                     }
-                } else if isRefining {
+                } else if isRefining || isCleaning {
                     HStack(spacing: 8) {
                         ProgressView()
                             .tint(.white)
                             .scaleEffect(0.7)
-                        Text("Refining transcription…")
+                        Text(isCleaning ? "Polishing transcription…" : "Refining transcription…")
                             .font(.caption).fontWeight(.semibold).fontDesign(.rounded)
                             .foregroundStyle(.white.opacity(0.7))
                     }
@@ -129,15 +131,27 @@ struct RecordingView: View {
                 Spacer().frame(height: 28)
 
                 // ── Live transcript ───────────────────────────────────────
-                ScrollView {
-                    Text("\(Text(speechService.transcript).foregroundColor(.white))\(Text(showTranscriptCursor ? "▌" : " ").foregroundColor(Color.sottoAccent))")
-                    .font(.body).fontDesign(.serif)
-                    .lineSpacing(6)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 28)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        Text("\(Text(speechService.displayTranscript).foregroundColor(.white))\(Text(showTranscriptCursor ? "▌" : " ").foregroundColor(Color.sottoAccent))")
+                        .font(.body).fontDesign(.serif)
+                        .lineSpacing(6)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 28)
+
+                        // Invisible anchor pinned to the end of the transcript
+                        Color.clear
+                            .frame(height: 1)
+                            .id("transcriptBottom")
+                    }
+                    .frame(height: 160)
+                    .onChange(of: speechService.displayTranscript) { _, _ in
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo("transcriptBottom", anchor: .bottom)
+                        }
+                    }
                 }
-                .frame(height: 160)
 
                 Spacer().frame(height: 24)
 
@@ -147,7 +161,7 @@ struct RecordingView: View {
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.55))
                     Text("·").foregroundStyle(.white.opacity(0.25))
-                    Text("\(speechService.transcript.split(separator: " ").count) words")
+                    Text("\(speechService.displayTranscript.split(separator: " ").count) words")
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.55))
                 }
@@ -202,7 +216,13 @@ struct RecordingView: View {
             WhisperSetupView(speechService: speechService) {
                 showSetup = false
                 Haptics.tap()
-                speechService.startRecording()
+                beginSessionAfterWhisperSetup()
+            }
+        }
+        .fullScreenCover(isPresented: $showInsightSetup) {
+            InsightModelSetupView {
+                showInsightSetup = false
+                startRecordingSession()
             }
         }
         .task {
@@ -211,16 +231,11 @@ struct RecordingView: View {
                 speechService.recordingState = .error(.micPermissionDenied)
                 return
             }
-            if speechService.isModelCached {
-                // Already downloaded — load silently and start
+            if SpeechService.isModelCached {
+                // Already downloaded — load silently, then check the insight
+                // model before starting.
                 await speechService.downloadAndLoad()
-                if speechService.whisperState == .ready {
-                    speechService.startRecording()
-                    Haptics.impact()
-                } else {
-                    // Load failed, still start with SFSpeech fallback
-                    speechService.startRecording()
-                }
+                beginSessionAfterWhisperSetup()
             } else {
                 // First time — show the setup flow
                 showSetup = true
@@ -232,8 +247,27 @@ struct RecordingView: View {
         }
     }
 
-    /// Stops capture, runs the Whisper refinement pass if available, then
-    /// hands off to analysis.
+    /// After Whisper is available, gate on the insight LLM setup (once ever),
+    /// then start recording.
+    private func beginSessionAfterWhisperSetup() {
+        if !ModelLibrary.isInsightModelCached() && !ModelLibrary.shared.insightReady {
+            // Slight delay so back-to-back fullScreenCovers don't swallow
+            // the second presentation.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                showInsightSetup = true
+            }
+        } else {
+            startRecordingSession()
+        }
+    }
+
+    private func startRecordingSession() {
+        Haptics.impact()
+        speechService.startRecording()
+    }
+
+    /// Stops capture, runs the Whisper refinement pass if available, cleans
+    /// the transcript with the local LLM, then hands off to analysis.
     private func finishRecording() {
         speechService.stopRecording()
         Task { @MainActor in
@@ -242,6 +276,9 @@ struct RecordingView: View {
                 await speechService.refineTranscriptWithWhisper()
                 isRefining = false
             }
+            isCleaning = true
+            await speechService.cleanTranscriptNow()
+            isCleaning = false
             showAnalysis = true
         }
     }

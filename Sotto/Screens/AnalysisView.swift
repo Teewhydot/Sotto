@@ -128,6 +128,12 @@ struct AnalysisView: View {
                     }
                 }
 
+                if let progress = analysisService.modelDownloadProgress {
+                    Text("Upgrading on-device insights… \(Int((progress * 100).rounded()))%")
+                        .font(.caption2).fontDesign(.rounded)
+                        .foregroundStyle(.tertiary)
+                }
+
                 Spacer().frame(height: 44)
             }
         }
