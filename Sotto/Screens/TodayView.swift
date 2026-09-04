@@ -118,7 +118,7 @@ struct TodayView: View {
                                                 .font(.caption2).foregroundStyle(.tertiary)
                                         }
                                         
-                                        Text(String(entry.transcript.prefix(120)) + "…")
+                                        Text(entry.transcript.truncated(to: 120))
                                             .font(.callout).fontDesign(.serif)
                                             .foregroundStyle(.secondary)
                                             .lineSpacing(4)

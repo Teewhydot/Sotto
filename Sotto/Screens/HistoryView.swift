@@ -9,6 +9,7 @@ struct HistoryView: View {
     @State private var searchText = ""
     @State private var selectedFilter = "All"
     @State private var pendingDelete: JournalEntry?
+    @State private var deleteErrorMessage: String?
     let filters = ["All", "Voice", "Text", "Favourites"]
 
     var filteredEntries: [JournalEntry] {
@@ -137,12 +138,27 @@ struct HistoryView: View {
                     if let entry = pendingDelete {
                         Haptics.warning()
                         modelContext.delete(entry)
-                        try? modelContext.save()
+                        do {
+                            try modelContext.save()
+                        } catch {
+                            deleteErrorMessage = "The entry couldn't be deleted: \(error.localizedDescription)"
+                        }
                     }
                     pendingDelete = nil
                 }
             } message: {
                 Text("This entry will be permanently deleted.")
+            }
+            .alert(
+                "Something went wrong",
+                isPresented: Binding(
+                    get: { deleteErrorMessage != nil },
+                    set: { if !$0 { deleteErrorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deleteErrorMessage ?? "")
             }
         }
     }
@@ -170,7 +186,7 @@ struct EntryRowView: View {
                 .padding(.leading, 4)
             }
 
-            Text(String(entry.transcript.prefix(90)) + "…")
+            Text(entry.transcript.truncated(to: 90))
                 .font(.callout).fontDesign(.serif)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)

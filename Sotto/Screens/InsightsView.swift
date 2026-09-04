@@ -419,10 +419,6 @@ struct EmotionBreakdownView: View {
         VStack(spacing: 12) {
             ForEach(emotions, id: \.0) { name, color, proportion in
                 HStack(spacing: 10) {
-                    Text(emotionEmoji(for: name))
-                        .font(.body)
-                        .frame(width: 24)
-
                     Text(name)
                         .font(.caption).fontDesign(.rounded)
                         .foregroundStyle(.primary)

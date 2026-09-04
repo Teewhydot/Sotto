@@ -6,23 +6,20 @@ struct OnboardingView: View {
 
     private let pages: [OnboardingPage] = [
         OnboardingPage(
-            emoji: "🎙️",
             title: "Speak freely.",
             body: "Sotto listens to everything you say — without you having to structure it or make it make sense.",
             accentColor: Color.sottoAccent // Terracotta
         ),
         OnboardingPage(
-            emoji: "🪞",
             title: "It notices things.",
             body: "Patterns in how you speak. Recurring themes. The emotions underneath the words you actually chose.",
             accentColor: Color(hex: "#EAB308") // Warm amber/sand
         ),
         OnboardingPage(
-            emoji: "🌿",
             title: "No performance.",
             body: "Sotto is not a productivity tool. No feeds, no scores to chase. Just a quiet place to be honest with yourself.",
             accentColor: Color(hex: "#64748B") // Slate/Sage
-        ),
+        )
     ]
 
     var body: some View {
@@ -46,15 +43,6 @@ struct OnboardingView: View {
                 TabView(selection: $currentPage) {
                     ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
                         VStack(spacing: 28) {
-                            // Emoji glyph
-                            ZStack {
-                                Circle()
-                                    .fill(page.accentColor.opacity(0.12))
-                                    .frame(width: 100, height: 100)
-                                Text(page.emoji)
-                                    .font(.system(size: 48))
-                            }
-
                             VStack(spacing: 14) {
                                 Text(page.title)
                                     .font(.largeTitle).fontWeight(.bold).fontDesign(.rounded)
@@ -130,7 +118,6 @@ struct OnboardingView: View {
 
 // MARK: - Page model
 struct OnboardingPage {
-    let emoji: String
     let title: String
     let body: String
     let accentColor: Color

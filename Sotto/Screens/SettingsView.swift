@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var nameDraft = ""
     @State private var faceIDUnavailableMessage: String?
     @State private var pendingRemoval: RemovalTarget?
+    @State private var dataErrorMessage: String?
 
     private enum RemovalTarget {
         case whisper
@@ -83,12 +84,23 @@ struct SettingsView: View {
                     do {
                         try modelContext.delete(model: JournalEntry.self)
                     } catch {
-                        print("Failed to delete data: \(error)")
+                        dataErrorMessage = "Some entries couldn't be deleted: \(error.localizedDescription)"
                     }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will permanently erase every journal entry and insight. This cannot be undone.")
+            }
+            .alert(
+                "Something went wrong",
+                isPresented: Binding(
+                    get: { dataErrorMessage != nil },
+                    set: { if !$0 { dataErrorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(dataErrorMessage ?? "")
             }
             .sheet(isPresented: $showExportSheet) {
                 ShareSheet(items: [generateExportString()])
@@ -496,11 +508,14 @@ struct SettingsView: View {
             func escape(_ field: String) -> String {
                 "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
             }
+            // Every field is quoted — a locale-formatted date (e.g.
+            // "9/4/26, 3:00 PM" in en_US) contains a comma too, and an
+            // unescaped one silently shifts every later column in the row.
             let dateStr = entry.date.formatted(date: .abbreviated, time: .shortened)
             csv += [
-                dateStr,
-                entry.inputMode,
-                entry.primaryEmotion,
+                escape(dateStr),
+                escape(entry.inputMode),
+                escape(entry.primaryEmotion),
                 escape(entry.summary),
                 escape(entry.note),
                 escape(entry.transcript),

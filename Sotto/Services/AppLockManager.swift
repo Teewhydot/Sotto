@@ -7,6 +7,14 @@ import LocalAuthentication
 final class AppLockManager {
     var isLocked = false
 
+    // Presenting the Face ID sheet itself bounces scenePhase through
+    // .inactive and back to .active, which can re-trigger authenticate()
+    // while the first evaluatePolicy call is still in flight. Two concurrent
+    // LAContext requests racing LocalAuthenticationUIService's transition
+    // animation is what crashes the system service, so a second call must
+    // be a no-op rather than starting another evaluatePolicy.
+    private var isAuthenticating = false
+
     private var isEnabled: Bool {
         UserDefaults.standard.bool(forKey: "faceIDEnabled")
     }
@@ -27,17 +35,26 @@ final class AppLockManager {
 
     /// Attempts biometric/passcode authentication to unlock.
     func authenticate() async {
-        guard isLocked else { return }
+        guard isLocked, !isAuthenticating else { return }
+        isAuthenticating = true
+        defer { isAuthenticating = false }
         let context = LAContext()
         context.localizedReason = "Unlock your journal"
 
         // .deviceOwnerAuthentication falls back to the device passcode when
         // biometrics fail or are unavailable — never leaves the user stranded.
         let policy: LAPolicy = .deviceOwnerAuthentication
-        guard context.canEvaluatePolicy(policy, error: nil) else {
-            // No auth method available (e.g. simulator without enrolled
-            // biometrics and no passcode) — fail open rather than brick the app.
-            isLocked = false
+        var evalError: NSError?
+        guard context.canEvaluatePolicy(policy, error: &evalError) else {
+            // Only fail open when the device genuinely has no auth method
+            // configured at all (no passcode set — the one case where this
+            // policy can never succeed, e.g. a fresh simulator). Any other
+            // reported reason is presumed transient/recoverable, so stay
+            // locked and let the Unlock button retry rather than opening a
+            // private journal on an unexplained LAContext failure.
+            if (evalError as? LAError)?.code == .passcodeNotSet {
+                isLocked = false
+            }
             return
         }
         do {

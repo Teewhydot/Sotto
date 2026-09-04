@@ -45,7 +45,10 @@ final class AIAnalysisService {
                 state = .loaded(try await localEngine.analyze(text))
                 return
             } catch {
-                // Fall through to heuristics rather than failing the entry.
+                // Fall through to heuristics rather than failing the entry —
+                // but leave a trail, since a persistently-failing local model
+                // would otherwise degrade every entry with no visible signal.
+                print("AIAnalysisService: local model analysis failed, using heuristics — \(error)")
             }
         }
 
@@ -62,7 +65,7 @@ final class AIAnalysisService {
 
         Task { [localEngine] in
             do {
-                try await localEngine.prepare { fraction in
+                try await localEngine.prepare { fraction, _ in
                     let captured = fraction
                     Task { @MainActor in
                         self.modelDownloadProgress = captured
@@ -95,6 +98,21 @@ final class AIAnalysisService {
         guard let start = trimmed.firstIndex(of: "{"),
               let end = trimmed.lastIndex(of: "}") else { return nil }
         let json = String(trimmed[start...end])
-        return try? JSONDecoder().decode(AnalysisResult.self, from: Data(json.utf8))
+        guard let result = try? JSONDecoder().decode(AnalysisResult.self, from: Data(json.utf8)) else {
+            return nil
+        }
+        // The model is asked for 1-10 / -1...1 ranges but isn't guaranteed to
+        // honor them — clamp so a wild value can't reach gauges/progress bars
+        // built assuming the documented range.
+        return AnalysisResult(
+            summary: result.summary,
+            primaryEmotion: result.primaryEmotion,
+            intensity: min(max(result.intensity, 1), 10),
+            energyLevel: min(max(result.energyLevel, 1), 10),
+            valence: min(max(result.valence, -1.0), 1.0),
+            themes: result.themes,
+            followUpQuestion: result.followUpQuestion,
+            hiddenObservation: result.hiddenObservation
+        )
     }
 }

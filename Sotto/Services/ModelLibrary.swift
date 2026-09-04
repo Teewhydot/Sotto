@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 // MARK: - Model library
 /// Central status + lifecycle for Sotto's on-device AI models (Whisper
@@ -20,8 +21,14 @@ final class ModelLibrary {
     /// True right after a download finishes in-process. Disk presence is the
     /// source of truth across launches (see `isInsightModelCached`).
     private(set) var insightReady = false
-    /// 0–1 while the insight model downloads; nil otherwise.
+    /// 0–1 while the insight model downloads; nil otherwise. Weighted by file
+    /// count in the model snapshot, not bytes, so it can sit near-flat for
+    /// long stretches while the one large weights file streams in — see
+    /// `insightDownloadSpeed` for a signal that isn't skewed by that.
     private(set) var insightDownloadProgress: Float?
+    /// Current download throughput in bytes/sec, when the underlying
+    /// transfer reports one; nil otherwise (including when not downloading).
+    private(set) var insightDownloadSpeed: Double?
     private(set) var insightError: String?
 
     // Stored (observable) disk status — refreshed after any model change so
@@ -33,6 +40,18 @@ final class ModelLibrary {
 
     private init() {
         refreshStatus()
+        // The insight model's ~700MB MLX container otherwise stays resident
+        // for the whole process lifetime (nothing else ever unloads it — see
+        // `unload()`), raising jetsam risk under memory pressure. It reloads
+        // transparently next use (SpeechService/AIAnalysisService already
+        // re-`prepare()` whenever `isReady()` is false).
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { await LocalInsightEngine.shared.unload() }
+        }
     }
 
     func refreshStatus() {
@@ -45,10 +64,18 @@ final class ModelLibrary {
     // MARK: Status
 
     static func isInsightModelCached() -> Bool {
-        let dirName = insightModelID.replacingOccurrences(of: "/", with: "--")
-        let dir = insightDownloadBase.appendingPathComponent("models--\(dirName)")
+        // Mirrors HubApi.localRepoLocation: downloadBase/<repoType>/<repoID>,
+        // e.g. ".../mlx-models/models/mlx-community/Llama-3.2-1B-Instruct-4bit"
+        // — swift-transformers' Hub layout, not the Python huggingface_hub
+        // "models--org--repo" cache convention.
+        let dir = insightDownloadBase.appendingPathComponent("models").appendingPathComponent(insightModelID)
         var isDir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) && isDir.boolValue
+        guard FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue else {
+            return false
+        }
+        // Guard against a directory left behind by an interrupted download.
+        let contents = try? FileManager.default.contentsOfDirectory(atPath: dir.path)
+        return !(contents?.isEmpty ?? true)
     }
 
     var isInsightDownloading: Bool {
@@ -61,17 +88,21 @@ final class ModelLibrary {
         guard insightDownloadProgress == nil else { return }
         insightError = nil
         insightDownloadProgress = 0
+        insightDownloadSpeed = nil
         do {
-            try await LocalInsightEngine.shared.prepare { [weak self] fraction in
+            try await LocalInsightEngine.shared.prepare { [weak self] fraction, speed in
                 Task { @MainActor in
                     self?.insightDownloadProgress = fraction
+                    self?.insightDownloadSpeed = speed
                 }
             }
             insightDownloadProgress = nil
+            insightDownloadSpeed = nil
             insightReady = true
             refreshStatus()
         } catch {
             insightDownloadProgress = nil
+            insightDownloadSpeed = nil
             insightError = error.localizedDescription
         }
     }
@@ -82,6 +113,7 @@ final class ModelLibrary {
         insightReady = false
         insightError = nil
         insightDownloadProgress = nil
+        insightDownloadSpeed = nil
         refreshStatus()
     }
 

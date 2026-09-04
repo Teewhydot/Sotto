@@ -11,6 +11,18 @@ struct EntryDetailView: View {
     @State private var showRecording = false
     @State private var showShareSheet = false
     @State private var showDeleteAlert = false
+    @State private var deleteErrorMessage: String?
+
+    /// The entry this one replied to, resolved lazily — `replyToEntryID` is a
+    /// bare UUID (not a SwiftData relationship), so the original may have
+    /// since been deleted; `nil` here just means "don't show a link."
+    private var repliedToEntry: JournalEntry? {
+        guard let targetID = entry.replyToEntryID else { return nil }
+        let descriptor = FetchDescriptor<JournalEntry>(
+            predicate: #Predicate { $0.id == targetID }
+        )
+        return try? modelContext.fetch(descriptor).first
+    }
 
     var body: some View {
         ScrollView {
@@ -32,10 +44,17 @@ struct EntryDetailView: View {
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
 
-                    if entry.replyToEntryID != nil {
-                        Label("Response to an earlier entry", systemImage: "arrow.turn.down.right")
+                    if let repliedToEntry {
+                        NavigationLink(destination: EntryDetailView(entry: repliedToEntry)) {
+                            Label("Response to an earlier entry", systemImage: "arrow.turn.down.right")
+                                .font(.caption).fontDesign(.rounded)
+                                .foregroundStyle(Color.sottoAccent)
+                        }
+                        .padding(.top, 4)
+                    } else if entry.replyToEntryID != nil {
+                        Label("Response to an earlier entry (no longer available)", systemImage: "arrow.turn.down.right")
                             .font(.caption).fontDesign(.rounded)
-                            .foregroundStyle(Color.sottoAccent)
+                            .foregroundStyle(.secondary)
                             .padding(.top, 4)
                     }
                 }
@@ -63,16 +82,7 @@ struct EntryDetailView: View {
 
                 // ── Emotion card ──────────────────────────────────────────
                 SottoCard {
-                    VStack(spacing: 18) {
-                        // Emoji bubble
-                        ZStack {
-                            Circle()
-                                .fill(entry.emotionColor.opacity(0.12))
-                                .frame(width: 84, height: 84)
-                            Text(emotionEmoji(for: entry.primaryEmotion))
-                                .font(.system(size: 38))
-                        }
-
+                    VStack(spacing: 12) {
                         Text(entry.primaryEmotion)
                             .font(.title3).fontWeight(.semibold).fontDesign(.rounded)
                             .foregroundStyle(entry.emotionColor)
@@ -183,20 +193,22 @@ struct EntryDetailView: View {
                             Text(
                                 showFullTranscript
                                     ? entry.transcript
-                                    : String(entry.transcript.prefix(150)) + "…"
+                                    : entry.transcript.truncated(to: 150)
                             )
                             .font(.body).fontDesign(.serif)
                             .foregroundStyle(.primary)
                             .lineSpacing(5)
 
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    showFullTranscript.toggle()
+                            if entry.transcript.count > 150 {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        showFullTranscript.toggle()
+                                    }
+                                } label: {
+                                    Text(showFullTranscript ? "Show less ↑" : "Show full transcript ↓")
+                                        .font(.caption).fontWeight(.semibold)
+                                        .foregroundStyle(Color.sottoAccent)
                                 }
-                            } label: {
-                                Text(showFullTranscript ? "Show less ↑" : "Show full transcript ↓")
-                                    .font(.caption).fontWeight(.semibold)
-                                    .foregroundStyle(Color.sottoAccent)
                             }
 
                             if showFullTranscript {
@@ -272,6 +284,17 @@ struct EntryDetailView: View {
         } message: {
             Text("This entry will be permanently deleted.")
         }
+        .alert(
+            "Something went wrong",
+            isPresented: Binding(
+                get: { deleteErrorMessage != nil },
+                set: { if !$0 { deleteErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteErrorMessage ?? "")
+        }
     }
 
     // MARK: - Actions
@@ -279,8 +302,12 @@ struct EntryDetailView: View {
     private func deleteEntry() {
         Haptics.warning()
         modelContext.delete(entry)
-        try? modelContext.save()
-        dismiss()
+        do {
+            try modelContext.save()
+            dismiss()
+        } catch {
+            deleteErrorMessage = "The entry couldn't be deleted: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - Derived values

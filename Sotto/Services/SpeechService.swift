@@ -134,6 +134,16 @@ final class SpeechService {
             whisperState = .ready
             return
         }
+        // Re-entrancy guard: a double-tap on "Download Model" (or a second
+        // caller while one is already in flight) would otherwise start a
+        // second concurrent WhisperKit.download() racing the first, with
+        // both writing whisperState out of order.
+        switch whisperState {
+        case .downloading, .loading:
+            return
+        default:
+            break
+        }
 
         do {
             // Resolve the best model name for this device
@@ -153,8 +163,13 @@ final class SpeechService {
                     load: true,
                     download: false
                 )
-                self.whisperKit = kit
-                whisperState = .ready
+                // WhisperKit's init isn't actor-isolated, so resumption after
+                // this await isn't guaranteed to land back on the main
+                // thread — hop explicitly before touching observed state.
+                await MainActor.run {
+                    self.whisperKit = kit
+                    self.whisperState = .ready
+                }
             } else {
                 // First time — download into Application Support with live progress
                 whisperState = .downloading(0)
@@ -175,7 +190,7 @@ final class SpeechService {
                 )
 
                 // Download finished — load into memory
-                whisperState = .loading
+                await MainActor.run { self.whisperState = .loading }
                 let kit = try await WhisperKit(
                     model: modelName,
                     modelFolder: downloadedFolder.path,
@@ -185,12 +200,14 @@ final class SpeechService {
                     load: true,
                     download: false
                 )
-                self.whisperKit = kit
-                whisperState = .ready
+                await MainActor.run {
+                    self.whisperKit = kit
+                    self.whisperState = .ready
+                }
             }
 
         } catch {
-            whisperState = .failed(error.localizedDescription)
+            await MainActor.run { self.whisperState = .failed(error.localizedDescription) }
         }
     }
 
@@ -202,16 +219,8 @@ final class SpeechService {
 
     // MARK: - Permissions
     func requestPermissions() async -> Bool {
-        let micAuthorized: Bool
-        if #available(iOS 17.0, *) {
-            micAuthorized = await AVAudioApplication.requestRecordPermission()
-        } else {
-            micAuthorized = await withCheckedContinuation { continuation in
-                AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                    continuation.resume(returning: granted)
-                }
-            }
-        }
+        // Deployment target is well above iOS 17, so this is always the path taken.
+        let micAuthorized = await AVAudioApplication.requestRecordPermission()
 
         let speechAuthorized = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
@@ -259,15 +268,19 @@ final class SpeechService {
         // Whisper runs a final high-accuracy pass over the captured audio
         // once recording stops (see refineTranscriptWithWhisper).
         recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
-            guard let self else { return }
-            if let result = result {
-                self.transcript = result.bestTranscription.formattedString
-                if result.isFinal {
-                    self.harvestFinalChunk()
+            // Speech delivers this off the main thread — hop before touching
+            // any @Observable state so SwiftUI's observers see it safely.
+            Task { @MainActor in
+                guard let self else { return }
+                if let result = result {
+                    self.transcript = result.bestTranscription.formattedString
+                    if result.isFinal {
+                        self.harvestFinalChunk()
+                    }
                 }
-            }
-            if error != nil {
-                self.stopRecording()
+                if error != nil {
+                    self.stopRecording()
+                }
             }
         }
 
@@ -283,6 +296,7 @@ final class SpeechService {
             try audioEngine.start()
             isRecording = true
             recordingState = .loaded(true)
+            observeInterruptions()
         } catch {
             recordingState = .error(.unknown("Audio engine failed: \(error.localizedDescription)"))
         }
@@ -295,6 +309,40 @@ final class SpeechService {
         recognitionRequest?.endAudio()
         isRecording = false
         try? AVAudioSession.sharedInstance().setActive(false)
+        stopObservingInterruptions()
+    }
+
+    // MARK: - Interruptions & backgrounding
+    // A voice recorder is exactly the app most likely to be interrupted
+    // mid-capture (a call, Siri, another app's audio session). Without this,
+    // iOS silently deactivates the session and kills the audio engine's tap
+    // out from under us: `isRecording` stays true and the UI keeps showing
+    // "Recording" while no more audio/transcript is actually being captured.
+
+    private var interruptionObserver: NSObjectProtocol?
+
+    private func observeInterruptions() {
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let info = notification.userInfo,
+                  let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: typeValue) == .began
+            else { return }
+            // Stop cleanly rather than let the engine die silently — whatever
+            // was captured up to this point is preserved in `transcript`.
+            self.stopRecording()
+        }
+    }
+
+    private func stopObservingInterruptions() {
+        if let interruptionObserver {
+            NotificationCenter.default.removeObserver(interruptionObserver)
+        }
+        interruptionObserver = nil
     }
 
     // MARK: - Live transcript cleanup
@@ -337,7 +385,7 @@ final class SpeechService {
             }
         } else {
             Task.detached {
-                try? await LocalInsightEngine.shared.prepare { _ in }
+                try? await LocalInsightEngine.shared.prepare { _, _ in }
             }
         }
         return NLInsightEngine.lightCleanup(delta)
@@ -355,22 +403,47 @@ final class SpeechService {
             candidate = try? await LocalInsightEngine.shared.clean(raw)
         } else {
             Task.detached {
-                try? await LocalInsightEngine.shared.prepare { _ in }
+                try? await LocalInsightEngine.shared.prepare { _, _ in }
             }
         }
 
         let fallback = NLInsightEngine.lightCleanup(raw)
         let accepted: String
         if let candidate, !candidate.isEmpty,
-           Double(candidate.count) >= Double(raw.count) * 0.4 {
+           Double(candidate.count) >= Double(raw.count) * 0.4,
+           Self.isFaithfulCleanup(candidate, to: raw) {
             accepted = candidate
         } else {
             accepted = fallback
         }
 
-        transcript = accepted
-        cleanedTranscript = accepted
-        finalizedRawPrefix = accepted
+        // `clean(_:)` isn't actor-isolated, so its resumption after the
+        // `await` above isn't guaranteed to be back on the main thread.
+        await MainActor.run {
+            self.transcript = accepted
+            self.cleanedTranscript = accepted
+            self.finalizedRawPrefix = accepted
+        }
+    }
+
+    /// Catches a small-LLM failure mode the length check alone misses:
+    /// instead of truncating, the model pads output by repeating or
+    /// hallucinating phrases untethered from what was actually said. Real
+    /// cleanup only removes filler/disfluencies, so faithful output should
+    /// retain most of the original's distinctive words.
+    private static func isFaithfulCleanup(_ candidate: String, to raw: String) -> Bool {
+        func significantWords(_ s: String) -> Set<String> {
+            Set(
+                s.lowercased()
+                    .split { !$0.isLetter && !$0.isNumber }
+                    .map(String.init)
+                    .filter { $0.count > 2 }
+            )
+        }
+        let rawWords = significantWords(raw)
+        guard !rawWords.isEmpty else { return true }
+        let overlap = rawWords.intersection(significantWords(candidate)).count
+        return Double(overlap) / Double(rawWords.count) >= 0.5
     }
 
     // MARK: - Whisper refinement pass
@@ -395,7 +468,9 @@ final class SpeechService {
             guard !text.isEmpty, text.count >= transcript.trimmingCharacters(in: .whitespaces).count / 2 else {
                 return false
             }
-            transcript = text
+            // WhisperKit's transcribe isn't actor-isolated, so resumption
+            // after the await above isn't guaranteed to be on the main thread.
+            await MainActor.run { self.transcript = text }
             return true
         } catch {
             // Keep the SFSpeech transcript as a graceful fallback.

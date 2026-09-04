@@ -6,24 +6,11 @@
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
+	<!-- No data types are collected: transcription (WhisperKit), insight
+	     analysis, and transcript cleanup (MLX) all run entirely on-device —
+	     nothing about a journal entry is ever transmitted off the device. -->
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array>
-		<!-- Entry transcripts are processed by the Gemini API to generate
-		     insights (App Functionality only — never linked to identity,
-		     never used for tracking). -->
-		<dict>
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-	</array>
+	<array/>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<!-- UserDefaults: app's own settings only -->

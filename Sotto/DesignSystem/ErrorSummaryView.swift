@@ -38,5 +38,5 @@ struct ErrorSummaryView: View {
 }
 
 #Preview {
-    ErrorSummaryView(error: .aiAnalysisFailed("Could not connect to Gemini."), retryAction: {})
+    ErrorSummaryView(error: .aiAnalysisFailed("The on-device model couldn't be reached."), retryAction: {})
 }

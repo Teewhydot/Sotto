@@ -38,7 +38,7 @@ struct InsightModelSetupView: View {
                         .fill(Color.sottoAccent.opacity(0.12))
                         .frame(width: 100, height: 100)
 
-                    Image(systemName: "sparkles.circle.fill")
+                    Image(systemName: "sparkles")
                         .font(.system(size: 52))
                         .foregroundStyle(Color.sottoAccent)
                 }
@@ -73,7 +73,7 @@ struct InsightModelSetupView: View {
                     if let error = library.insightError {
                         failedView(error)
                     } else if let progress = library.insightDownloadProgress {
-                        downloadingView(progress)
+                        downloadingView(progress, speed: library.insightDownloadSpeed)
                     } else if library.insightReady {
                         readyView
                     } else {
@@ -104,7 +104,7 @@ struct InsightModelSetupView: View {
         .padding(.horizontal, 28)
     }
 
-    private func downloadingView(_ progress: Float) -> some View {
+    private func downloadingView(_ progress: Float, speed: Double?) -> some View {
         VStack(spacing: 14) {
             HStack {
                 Text("Downloading model…")
@@ -139,10 +139,25 @@ struct InsightModelSetupView: View {
             .frame(height: 6)
             .padding(.horizontal, 28)
 
-            Text("One-time download — the model is cached until you remove it.")
+            // The percentage above is weighted by file count, not bytes, so
+            // it can sit still for a long stretch while the one large
+            // weights file streams in. Throughput isn't subject to that
+            // skew, so it's the more honest "is this actually moving?" signal
+            // — shown whenever the transfer reports one.
+            Text(captionText(speed))
                 .font(.caption).fontDesign(.rounded)
                 .foregroundStyle(.white.opacity(0.4))
+                .contentTransition(.numericText())
+                .animation(.default, value: speed)
         }
+    }
+
+    private func captionText(_ speed: Double?) -> String {
+        guard let speed, speed > 0 else {
+            return "One-time download — the model is cached until you remove it."
+        }
+        let rate = ByteCountFormatter.string(fromByteCount: Int64(speed), countStyle: .file)
+        return "\(rate)/s — cached until you remove it."
     }
 
     private func failedView(_ message: String) -> some View {

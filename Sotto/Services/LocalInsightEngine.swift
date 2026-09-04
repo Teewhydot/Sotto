@@ -87,12 +87,14 @@ enum InsightEngineError: LocalizedError {
     case notPrepared
     case missingTokenizerConfig
     case unparseableOutput
+    case timedOut
 
     var errorDescription: String? {
         switch self {
         case .notPrepared: "Local insight model is not loaded."
         case .missingTokenizerConfig: "Tokenizer config missing from downloaded model."
         case .unparseableOutput: "Model output was not valid insight JSON."
+        case .timedOut: "Local model took too long to respond."
         }
     }
 }
@@ -113,6 +115,14 @@ actor LocalInsightEngine {
 
     private var container: ModelContainer?
     private var preparationTask: Task<Void, Error>?
+    /// Every in-flight caller's progress callback, keyed so each can be
+    /// unregistered independently. `preparationTask` is shared across
+    /// concurrent/overlapping `prepare()` calls (e.g. a silent background
+    /// warm-up from `SpeechService` racing a user-initiated download from
+    /// Settings) — without broadcasting to all of them, only whichever
+    /// caller happened to start the task would ever see progress, and every
+    /// other caller's UI would sit frozen until the download just completed.
+    private var progressObservers: [UUID: @Sendable (Float, Double?) -> Void] = [:]
 
     private static let instructions = """
     You are a warm, empathetic journaling companion. The speaker shares private \
@@ -145,8 +155,18 @@ actor LocalInsightEngine {
 
     /// Downloads (first time only) and loads the model. Safe to call repeatedly
     /// and concurrently — concurrent callers await the in-flight task.
-    func prepare(progressHandler: @escaping @Sendable (Float) -> Void) async throws {
+    ///
+    /// `progressHandler` receives the fraction complete (weighted by file
+    /// count across the snapshot, not by bytes — small config/tokenizer
+    /// files can jump the fraction well ahead of the dominant weights file)
+    /// and, when available, the current throughput in bytes/sec.
+    func prepare(progressHandler: @escaping @Sendable (Float, Double?) -> Void) async throws {
         if container != nil { return }
+
+        let observerID = UUID()
+        progressObservers[observerID] = progressHandler
+        defer { progressObservers.removeValue(forKey: observerID) }
+
         if let running = preparationTask {
             try await running.value
             return
@@ -159,14 +179,26 @@ actor LocalInsightEngine {
                 using: HFTokenizerLoader(),
                 configuration: ModelConfiguration(id: Self.modelID),
                 progressHandler: { progress in
-                    progressHandler(Float(progress.fractionCompleted))
+                    let speed = progress.userInfo[.throughputKey] as? Double
+                    Task { await self.broadcastProgress(Float(progress.fractionCompleted), speed) }
                 }
             )
             await self.store(loaded)
         }
         preparationTask = task
+        // Runs even when task.value throws — otherwise a failed attempt
+        // leaves preparationTask pointing at the dead task forever, and
+        // every later call (Retry included) just replays its cached error
+        // via the `if let running = preparationTask` branch above instead
+        // of starting a fresh download.
+        defer { preparationTask = nil }
         try await task.value
-        preparationTask = nil
+    }
+
+    private func broadcastProgress(_ fraction: Float, _ speed: Double?) {
+        for observer in progressObservers.values {
+            observer(fraction, speed)
+        }
     }
 
     private func store(_ loaded: ModelContainer) {
@@ -181,16 +213,41 @@ actor LocalInsightEngine {
         container = nil
     }
 
+    /// Wall-clock budget for one generation. Thermal throttling or a
+    /// pathological input could otherwise stall `session.respond` forever,
+    /// with no user-facing recovery (analysis/cleanup just spin indefinitely).
+    /// MLX generation has no cooperative-cancellation hook, so the loser of
+    /// this race keeps running in the background — its result is simply
+    /// discarded once the deadline wins.
+    private static let generationTimeoutSeconds: UInt64 = 25
+
+    private static func withGenerationTimeout<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: generationTimeoutSeconds * 1_000_000_000)
+                throw InsightEngineError.timedOut
+            }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else { throw InsightEngineError.timedOut }
+            return result
+        }
+    }
+
     func analyze(_ transcript: String) async throws -> AnalysisResult {
         guard let container else { throw InsightEngineError.notPrepared }
 
-        // A fresh session per entry keeps prompts independent and memory flat.
-        let session = ChatSession(
-            container,
-            instructions: Self.instructions,
-            generateParameters: GenerateParameters(maxTokens: 500, temperature: 0.3)
-        )
-        let response = try await session.respond(to: String(format: Self.jsonPrompt, transcript))
+        let response = try await Self.withGenerationTimeout {
+            // A fresh session per entry keeps prompts independent and memory flat.
+            let session = ChatSession(
+                container,
+                instructions: Self.instructions,
+                generateParameters: GenerateParameters(maxTokens: 500, temperature: 0.3)
+            )
+            return try await session.respond(to: String(format: Self.jsonPrompt, transcript))
+        }
 
         guard let result = AIAnalysisService.parseInsightJSON(response) else {
             throw InsightEngineError.unparseableOutput
@@ -204,12 +261,14 @@ actor LocalInsightEngine {
     func clean(_ transcript: String) async throws -> String {
         guard let container else { throw InsightEngineError.notPrepared }
 
-        let session = ChatSession(
-            container,
-            instructions: Self.cleaningInstructions,
-            generateParameters: GenerateParameters(maxTokens: 900, temperature: 0.0)
-        )
-        let response = try await session.respond(to: String(format: Self.cleaningPrompt, transcript))
+        let response = try await Self.withGenerationTimeout {
+            let session = ChatSession(
+                container,
+                instructions: Self.cleaningInstructions,
+                generateParameters: GenerateParameters(maxTokens: 900, temperature: 0.0)
+            )
+            return try await session.respond(to: String(format: Self.cleaningPrompt, transcript))
+        }
         return Self.postProcessCleanup(response)
     }
 

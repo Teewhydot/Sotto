@@ -7,7 +7,12 @@ struct WaveformView: View {
     let power: Float
     
     @State private var amplitudes: [CGFloat] = Array(repeating: 0.1, count: 42)
-    let timer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
+    // @State, not a plain `let` — WaveformView is reconstructed on every
+    // RecordingView.body re-evaluation (which fires on nearly every audio
+    // buffer via `speechService.audioPower`); a plain stored property would
+    // re-run `Timer.publish(...).autoconnect()` on each of those, stacking
+    // up concurrent live timers instead of reusing one.
+    @State private var timer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Canvas { context, size in
@@ -45,6 +50,7 @@ struct WaveformView: View {
 // MARK: - Recording View
 struct RecordingView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Set when recording in response to a question on another entry.
     var replyTo: UUID? = nil
@@ -244,6 +250,17 @@ struct RecordingView: View {
         .onDisappear {
             speechService.stopRecording()
             speechService.unloadModel()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Backgrounding mid-recording (a call, switching apps, locking
+            // the phone) would otherwise leave the audio session force-
+            // deactivated out from under a still-"isRecording" UI with no
+            // more audio actually being captured. Stop cleanly instead —
+            // whatever was captured is preserved in the transcript, and the
+            // user can tap Done themselves on return.
+            if phase != .active, speechService.isRecording {
+                speechService.stopRecording()
+            }
         }
     }
 
