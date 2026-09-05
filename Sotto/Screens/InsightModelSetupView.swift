@@ -9,6 +9,7 @@ struct InsightModelSetupView: View {
     var onComplete: () -> Void
 
     @State private var animatePulse = false
+    @State private var showPaywall = false
 
     private var library: ModelLibrary { ModelLibrary.shared }
 
@@ -76,6 +77,8 @@ struct InsightModelSetupView: View {
                         downloadingView(progress, speed: library.insightDownloadSpeed)
                     } else if library.insightReady {
                         readyView
+                    } else if !library.isInsightEntitled {
+                        unlockPromptView
                     } else {
                         downloadButton
                     }
@@ -83,9 +86,39 @@ struct InsightModelSetupView: View {
                 .padding(.bottom, 48)
             }
         }
+        .sheet(isPresented: $showPaywall) {
+            PremiumPaywallView(onComplete: { showPaywall = false })
+        }
     }
 
     // MARK: States
+
+    private var unlockPromptView: some View {
+        VStack(spacing: 12) {
+            Button {
+                showPaywall = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles")
+                    Text("Unlock Smart Insights")
+                        .fontWeight(.semibold).fontDesign(.rounded)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.sottoAccent, in: RoundedRectangle(cornerRadius: 16))
+            }
+            .padding(.horizontal, 28)
+
+            Button {
+                onComplete() // continue without insights — heuristics cover it
+            } label: {
+                Text("Continue Without Insights")
+                    .font(.subheadline).fontWeight(.semibold).fontDesign(.rounded)
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+        }
+    }
 
     private var downloadButton: some View {
         Button {

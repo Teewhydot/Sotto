@@ -1,4 +1,6 @@
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // MARK: - Centralised haptic feedback
 // All haptics route through here so the Settings toggle ("hapticFeedback")

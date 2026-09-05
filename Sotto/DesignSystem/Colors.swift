@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 // MARK: - Hex Color initialiser
 extension Color {
     init(hex: String) {
@@ -19,10 +23,15 @@ extension Color {
 
 // MARK: - Sotto Palette
 extension Color {
-    // Backgrounds (adapts to light/dark)
-    static let sottoBackground  = Color(.systemBackground)
-    static let sottoSecondary   = Color(.secondarySystemBackground)
-    static let sottoTertiary    = Color(.tertiarySystemBackground)
+#if canImport(UIKit)
+    static let sottoBackground  = Color(uiColor: .systemBackground)
+    static let sottoSecondary   = Color(uiColor: .secondarySystemBackground)
+    static let sottoTertiary    = Color(uiColor: .tertiarySystemBackground)
+#else
+    static let sottoBackground  = Color.black // fallback for unsupported platforms
+    static let sottoSecondary   = Color.gray
+    static let sottoTertiary    = Color.secondary
+#endif
 
     // Recording screen — always dark
     static let sottoRecordingBG = Color(hex: "#000000")

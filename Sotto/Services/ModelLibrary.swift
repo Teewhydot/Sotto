@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // MARK: - Model library
 /// Central status + lifecycle for Sotto's on-device AI models (Whisper
@@ -82,6 +84,14 @@ final class ModelLibrary {
         insightDownloadProgress != nil
     }
 
+    /// UI-facing convenience only — decides what Settings/the setup screen
+    /// *show* (download button vs. an upgrade prompt). Not the enforcement
+    /// point: `LocalInsightEngine.prepare()` gates for real, since callers
+    /// like SpeechService's background warm-up never go through here.
+    var isInsightEntitled: Bool {
+        PremiumManager.shared.isSmartInsightsUnlocked
+    }
+
     // MARK: Insight model lifecycle
 
     func downloadInsightModel() async {
@@ -109,6 +119,11 @@ final class ModelLibrary {
 
     func deleteInsightModel() async {
         await LocalInsightEngine.shared.unload()
+        // unload() only stops *new* analyze()/clean() calls from starting —
+        // one already mid-generation (e.g. cleaning up the entry you just
+        // finished recording) keeps reading weights/tokenizer files straight
+        // off disk. Deleting them out from under it crashed the app.
+        await LocalInsightEngine.shared.waitForIdle()
         try? FileManager.default.removeItem(at: Self.insightDownloadBase)
         insightReady = false
         insightError = nil
@@ -142,3 +157,4 @@ final class ModelLibrary {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
+

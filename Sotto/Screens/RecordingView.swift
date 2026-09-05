@@ -267,7 +267,14 @@ struct RecordingView: View {
     /// After Whisper is available, gate on the insight LLM setup (once ever),
     /// then start recording.
     private func beginSessionAfterWhisperSetup() {
-        if !ModelLibrary.isInsightModelCached() && !ModelLibrary.shared.insightReady {
+        let isReadyToUse = (ModelLibrary.isInsightModelCached() || ModelLibrary.shared.insightReady)
+            && ModelLibrary.shared.isInsightEntitled
+        if !isReadyToUse {
+            // Not entitled (or never downloaded) — show the setup screen,
+            // which now offers an unlock prompt instead of "Download" when
+            // locked. Otherwise leftover cached files from a lapsed
+            // subscription (or dev testing) would silently skip straight to
+            // recording as if the feature were usable.
             // Slight delay so back-to-back fullScreenCovers don't swallow
             // the second presentation.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {

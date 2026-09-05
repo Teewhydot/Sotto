@@ -26,6 +26,7 @@ struct SettingsView: View {
     @State private var faceIDUnavailableMessage: String?
     @State private var pendingRemoval: RemovalTarget?
     @State private var dataErrorMessage: String?
+    @State private var showPaywall = false
 
     private enum RemovalTarget {
         case whisper
@@ -291,8 +292,12 @@ struct SettingsView: View {
                 sizeBytes: library.insightSizeBytes,
                 isBusy: library.isInsightDownloading,
                 removeTarget: .insight,
+                isLocked: !library.isInsightEntitled,
                 downloadAction: { Task { await library.downloadInsightModel() } }
             )
+        }
+        .sheet(isPresented: $showPaywall) {
+            PremiumPaywallView(onComplete: { showPaywall = false })
         }
     }
 
@@ -304,6 +309,7 @@ struct SettingsView: View {
         sizeBytes: Int64,
         isBusy: Bool,
         removeTarget: RemovalTarget,
+        isLocked: Bool = false,
         downloadAction: (() -> Void)?
     ) -> some View {
         HStack(spacing: 12) {
@@ -320,6 +326,14 @@ struct SettingsView: View {
                 Text("\(Int(((ModelLibrary.shared.insightDownloadProgress ?? 0) * 100).rounded()))%")
                     .font(.caption).fontWeight(.semibold).monospacedDigit()
                     .foregroundStyle(Color.sottoAccent)
+            } else if isLocked {
+                // Checked before isCached: leftover cached files (a lapsed
+                // subscription, or dev-testing residue) don't make the
+                // feature usable — LocalInsightEngine.prepare() still gates
+                // actually loading them.
+                Label("Premium", systemImage: "lock.fill")
+                    .font(.caption).fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
             } else if isCached {
                 Label("Ready", systemImage: "checkmark.circle.fill")
                     .font(.caption).fontWeight(.semibold)
@@ -340,6 +354,17 @@ struct SettingsView: View {
                         .font(.caption2).monospacedDigit()
                         .foregroundStyle(.tertiary)
                 }
+            }
+        } else if isLocked {
+            Button {
+                showPaywall = true
+            } label: {
+                HStack {
+                    Text("Unlock Smart Insights")
+                    Spacer()
+                    Image(systemName: "sparkles")
+                }
+                .foregroundStyle(Color.sottoAccent)
             }
         } else if isCached {
             Button(role: .destructive) {

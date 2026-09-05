@@ -88,6 +88,8 @@ enum InsightEngineError: LocalizedError {
     case missingTokenizerConfig
     case unparseableOutput
     case timedOut
+    case simulatorUnsupported
+    case premiumRequired
 
     var errorDescription: String? {
         switch self {
@@ -95,6 +97,8 @@ enum InsightEngineError: LocalizedError {
         case .missingTokenizerConfig: "Tokenizer config missing from downloaded model."
         case .unparseableOutput: "Model output was not valid insight JSON."
         case .timedOut: "Local model took too long to respond."
+        case .simulatorUnsupported: "Smart Insights needs a real device — MLX requires direct Metal GPU access, which the iOS Simulator doesn't provide."
+        case .premiumRequired: "Smart Insights is a premium feature."
         }
     }
 }
@@ -123,6 +127,15 @@ actor LocalInsightEngine {
     /// caller happened to start the task would ever see progress, and every
     /// other caller's UI would sit frozen until the download just completed.
     private var progressObservers: [UUID: @Sendable (Float, Double?) -> Void] = [:]
+
+    /// Count of `analyze`/`clean` calls currently mid-generation. `unload()`
+    /// dropping `container` doesn't stop an already-running call — it
+    /// captured its own `ModelContainer`/`ChatSession` locally before the
+    /// guard, so the in-flight generation keeps reading the model's weights
+    /// and tokenizer/template files straight off disk. Deleting those files
+    /// out from under it (Settings → Remove Model, right after finishing an
+    /// entry) is what was crashing the app; `waitForIdle()` closes that gap.
+    private var activeGenerations = 0
 
     private static let instructions = """
     You are a warm, empathetic journaling companion. The speaker shares private \
@@ -163,6 +176,27 @@ actor LocalInsightEngine {
     func prepare(progressHandler: @escaping @Sendable (Float, Double?) -> Void) async throws {
         if container != nil { return }
 
+        #if targetEnvironment(simulator)
+        // MLX requires a modern Metal MTLGPUFamily that the iOS Simulator
+        // does not provide (confirmed in mlx-swift's own "Running on iOS"
+        // docs) — attempting to load weights here doesn't throw a catchable
+        // Swift error, it hard-aborts the process from inside MLX's C++
+        // core. Failing fast with a normal error instead lets the existing
+        // setup-screen/Settings error UI explain it, with a Retry that's
+        // honest about needing a real device (or the "Mac (Designed for
+        // iPad)" run destination, which does have Metal access).
+        throw InsightEngineError.simulatorUnsupported
+        #endif
+
+        // Single choke point for the premium gate: every path that can start
+        // a download/load funnels through here, including the two silent
+        // background warm-ups in SpeechService/AIAnalysisService that never
+        // touch ModelLibrary or any UI at all. Gating only at the UI layer
+        // (hiding the Download button) would miss those entirely.
+        guard await PremiumManager.shared.isSmartInsightsUnlocked else {
+            throw InsightEngineError.premiumRequired
+        }
+
         let observerID = UUID()
         progressObservers[observerID] = progressHandler
         defer { progressObservers.removeValue(forKey: observerID) }
@@ -174,13 +208,32 @@ actor LocalInsightEngine {
 
         let task = Task { [weak self] () throws -> Void in
             guard let self else { return }
+            // A prior crash (or any interruption) mid-write can leave a
+            // truncated file on disk that HubApi's own etag-based caching
+            // will still treat as "already downloaded" on retry, since that
+            // check only re-verifies content hash for large LFS files, not
+            // small JSON configs. Loading a truncated config/weights file is
+            // exactly what was crashing MLX's C++ loader with a native
+            // nullptr abort — one Swift can't catch — right after the
+            // snapshot reported 100%. Discarding anything that doesn't look
+            // structurally sound forces a guaranteed-clean re-download.
+            Self.discardSnapshotIfCorrupted()
+
+            // Coalesce like the Whisper download does — without this, every
+            // raw URLSession progress tick (many per second) spawned its own
+            // actor hop + MainActor hop, which is what made this download
+            // feel noticeably jankier than Whisper's.
+            var lastReportedFraction: Float = -1
             let loaded = try await loadModelContainer(
                 from: HFDownloader(),
                 using: HFTokenizerLoader(),
                 configuration: ModelConfiguration(id: Self.modelID),
                 progressHandler: { progress in
+                    let fraction = Float(progress.fractionCompleted)
+                    guard fraction - lastReportedFraction >= 0.002 || fraction >= 1 else { return }
+                    lastReportedFraction = fraction
                     let speed = progress.userInfo[.throughputKey] as? Double
-                    Task { await self.broadcastProgress(Float(progress.fractionCompleted), speed) }
+                    Task { await self.broadcastProgress(fraction, speed) }
                 }
             )
             await self.store(loaded)
@@ -205,12 +258,64 @@ actor LocalInsightEngine {
         container = loaded
     }
 
+    /// Deletes the on-disk snapshot if it exists but doesn't look complete —
+    /// missing/empty required files, or a config that isn't valid JSON. Safe
+    /// to call unconditionally before every download attempt: a healthy
+    /// snapshot is left untouched (HubApi's own etag check then skips
+    /// re-downloading anything unchanged), and only a corrupted one pays the
+    /// cost of a fresh download.
+    private static func discardSnapshotIfCorrupted() {
+        let fm = FileManager.default
+        let dir = ModelLibrary.insightDownloadBase
+            .appendingPathComponent("models")
+            .appendingPathComponent(modelID)
+        guard fm.fileExists(atPath: dir.path) else { return }
+
+        func isNonEmptyFile(_ name: String) -> Bool {
+            let path = dir.appendingPathComponent(name).path
+            guard let size = (try? fm.attributesOfItem(atPath: path))?[.size] as? Int else { return false }
+            return size > 0
+        }
+        func isValidJSON(_ name: String) -> Bool {
+            let path = dir.appendingPathComponent(name)
+            guard let data = try? Data(contentsOf: path) else { return false }
+            return (try? JSONSerialization.jsonObject(with: data)) != nil
+        }
+
+        // tokenizer.json is required by every load; config.json drives the
+        // model architecture. Both must exist, be non-empty, and parse.
+        let requiredJSON = ["config.json", "tokenizer.json"]
+        let sound = requiredJSON.allSatisfy { isNonEmptyFile($0) && isValidJSON($0) }
+            // At least one real weights file, and not a stub-sized truncation.
+            && ((try? fm.contentsOfDirectory(atPath: dir.path))?.contains { name in
+                name.hasSuffix(".safetensors") &&
+                ((try? fm.attributesOfItem(atPath: dir.appendingPathComponent(name).path))?[.size] as? Int ?? 0) > 1_000_000
+            } ?? false)
+
+        if !sound {
+            try? fm.removeItem(at: dir)
+        }
+    }
+
     /// Releases the in-memory model (used when the user deletes it in
     /// Settings). A pending download is cancelled; it can be re-run later.
+    /// This alone does NOT make it safe to delete the model's files —
+    /// see `waitForIdle()`.
     func unload() {
         preparationTask?.cancel()
         preparationTask = nil
         container = nil
+    }
+
+    /// Waits for any `analyze`/`clean` call already past the `container`
+    /// guard to finish. Call this — after `unload()` — before deleting the
+    /// model's files on disk: `unload()` only stops *new* calls from
+    /// starting; a call already mid-generation is unaffected by it and may
+    /// still be reading weights/tokenizer files straight off disk.
+    func waitForIdle() async {
+        while activeGenerations > 0 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
     }
 
     /// Wall-clock budget for one generation. Thermal throttling or a
@@ -238,6 +343,8 @@ actor LocalInsightEngine {
 
     func analyze(_ transcript: String) async throws -> AnalysisResult {
         guard let container else { throw InsightEngineError.notPrepared }
+        activeGenerations += 1
+        defer { activeGenerations -= 1 }
 
         let response = try await Self.withGenerationTimeout {
             // A fresh session per entry keeps prompts independent and memory flat.
@@ -260,6 +367,8 @@ actor LocalInsightEngine {
     /// Greedy decoding keeps the edit faithful to the spoken words.
     func clean(_ transcript: String) async throws -> String {
         guard let container else { throw InsightEngineError.notPrepared }
+        activeGenerations += 1
+        defer { activeGenerations -= 1 }
 
         let response = try await Self.withGenerationTimeout {
             let session = ChatSession(

@@ -1,0 +1,115 @@
+{
+  "identifier" : "775EAB9C-9B46-443F-B271-D499D118142B",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_applicationInternalID" : "0",
+    "_developerTeamID" : "0",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "2DC5D079-B4E0-4F7D-B886-752370F65FB8",
+      "localizations" : [],
+      "name" : "Sotto Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "399D4B22-D057-4157-BDB3-84690FB440ED",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlock Smart Insights — on-device AI reflections for every entry.",
+              "displayName" : "Sotto Premium Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "ng.com.sirteefyapps.Sotto.premium.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Sotto Premium Monthly",
+          "subscriptionGroupID" : "2DC5D079-B4E0-4F7D-B886-752370F65FB8",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "39.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "C923601B-C748-4A70-AC13-87100CB5EE93",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlock Smart Insights — on-device AI reflections for every entry. Best value.",
+              "displayName" : "Sotto Premium Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "ng.com.sirteefyapps.Sotto.premium.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Sotto Premium Yearly",
+          "subscriptionGroupID" : "2DC5D079-B4E0-4F7D-B886-752370F65FB8",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

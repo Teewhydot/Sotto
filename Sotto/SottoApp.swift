@@ -44,6 +44,8 @@ struct SottoApp: App {
                 }
             }
             .task {
+                // As early as possible, per RevenueCat's own guidance.
+                PremiumManager.shared.configure()
                 // Cold-launch lock: if the app-lock is enabled, require
                 // authentication on first open too — not just after backgrounding.
                 await lockManager.authenticateOnLaunchIfNeeded()

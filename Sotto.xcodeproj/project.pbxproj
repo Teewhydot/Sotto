@@ -10,6 +10,7 @@
 		6B0EDF321303B30FEC9139E7 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = A512AD77F9DE2A0AD8C93934 /* WhisperKit */; };
 		6D1E000C00000000000000C1 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 6D1E000B00000000000000B1 /* MLXLLM */; };
 		6D1E000C00000000000000C2 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 6D1E000B00000000000000B2 /* MLXLMCommon */; };
+		6D1E000C00000000000000C3 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 6D1E000B00000000000000B3 /* RevenueCat */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +63,7 @@
 				6B0EDF321303B30FEC9139E7 /* WhisperKit in Frameworks */,
 				6D1E000C00000000000000C1 /* MLXLLM in Frameworks */,
 				6D1E000C00000000000000C2 /* MLXLMCommon in Frameworks */,
+				6D1E000C00000000000000C3 /* RevenueCat in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -131,6 +133,7 @@
 				A512AD77F9DE2A0AD8C93934 /* WhisperKit */,
 				6D1E000B00000000000000B1 /* MLXLLM */,
 				6D1E000B00000000000000B2 /* MLXLMCommon */,
+				6D1E000B00000000000000B3 /* RevenueCat */,
 			);
 			productName = Sotto;
 			productReference = 41D96F463007B43A00BDA028 /* Sotto.app */;
@@ -167,6 +170,7 @@
 			packageReferences = (
 				1056FE38FD6FAEE7C0875FD9 /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				6D1E000A00000000000000A1 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				6D1E000A00000000000000A2 /* XCRemoteSwiftPackageReference "purchases-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 41D96F473007B43A00BDA028 /* Products */;
@@ -400,6 +404,7 @@
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Sotto uses Face ID to keep your journal private.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sotto needs access to your microphone to record your journal entries.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Sotto needs access to speech recognition to transcribe your audio.";
+				INFOPLIST_KEY_RevenueCatAPIKey = "$(REVENUECAT_API_KEY)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -449,6 +454,7 @@
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Sotto uses Face ID to keep your journal private.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sotto needs access to your microphone to record your journal entries.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Sotto needs access to speech recognition to transcribe your audio.";
+				INFOPLIST_KEY_RevenueCatAPIKey = "$(REVENUECAT_API_KEY)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -528,6 +534,14 @@
 				minimumVersion = 3.31.4;
 			};
 		};
+		6D1E000A00000000000000A2 /* XCRemoteSwiftPackageReference "purchases-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.88.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -540,6 +554,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 6D1E000A00000000000000A1 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLMCommon;
+		};
+		6D1E000B00000000000000B3 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6D1E000A00000000000000A2 /* XCRemoteSwiftPackageReference "purchases-ios" */;
+			productName = RevenueCat;
 		};
 		A512AD77F9DE2A0AD8C93934 /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;
