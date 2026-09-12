@@ -11,6 +11,11 @@ struct PremiumPaywallView: View {
     @State private var premium = PremiumManager.shared
     @State private var purchasingPackageID: String?
     @State private var animatePulse = false
+    @State private var showPrivacyPolicy = false
+
+    /// Apple's standard EULA — App Review expects a reachable Terms of Use
+    /// from any paywall. Replace only if you publish your own EULA.
+    private let termsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
 
     var body: some View {
         ZStack {
@@ -95,9 +100,10 @@ struct PremiumPaywallView: View {
                             }
                             .padding(.horizontal, 28)
                         } else {
-                            Text("Offers aren't available right now — check back shortly.")
+                            Text(premium.offeringsError ?? "Offers aren't available right now — check back shortly.")
                                 .font(.caption).fontDesign(.rounded)
                                 .foregroundStyle(.white.opacity(0.5))
+                                .multilineTextAlignment(.center)
                                 .padding(.horizontal, 32)
                         }
 
@@ -111,7 +117,7 @@ struct PremiumPaywallView: View {
                         }
 
                         Button {
-                            Task { await premium.restorePurchases() }
+                            Task { await premium.restorePurchases().report() }
                         } label: {
                             Text("Restore Purchases")
                                 .font(.caption).fontWeight(.semibold).fontDesign(.rounded)
@@ -119,14 +125,43 @@ struct PremiumPaywallView: View {
                         }
                         .padding(.top, 18)
 
+                        // Required disclosure (App Review 3.1.2): renewal
+                        // terms and how to cancel, stated plainly before
+                        // purchase rather than buried.
+                        Text("Subscriptions renew automatically unless cancelled at least 24 hours before the period ends. Cancel anytime in your App Store account settings. Any unused portion of a free trial is forfeited when you purchase a subscription.")
+                            .font(.caption2).fontDesign(.rounded)
+                            .foregroundStyle(.white.opacity(0.35))
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(2)
+                            .padding(.horizontal, 32)
+                            .padding(.top, 20)
+
+                        // App Review expects both of these reachable from
+                        // any screen that sells a subscription.
+                        HStack(spacing: 18) {
+                            Link("Terms of Use", destination: termsURL)
+                            Text("·").foregroundStyle(.white.opacity(0.25))
+                            Button("Privacy Policy") { showPrivacyPolicy = true }
+                        }
+                        .font(.caption2).fontWeight(.semibold).fontDesign(.rounded)
+                        .foregroundStyle(.white.opacity(0.5))
+                        .padding(.top, 10)
+
                         Spacer().frame(height: 24)
                     }
                 }
             }
         }
+        .feedbackOverlay()
         .task { await premium.loadOfferings() }
         .onChange(of: premium.isSmartInsightsUnlocked) { _, unlocked in
             if unlocked { onComplete() }
+        }
+        // A sheet presented *from* a sheet is fine — the earlier
+        // presentation bug was two sheet modifiers competing on one view,
+        // not a chain like this.
+        .sheet(isPresented: $showPrivacyPolicy) {
+            NavigationStack { PrivacyPolicyView() }
         }
     }
 
@@ -153,10 +188,28 @@ struct PremiumPaywallView: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(periodLabel(for: package))
-                        .font(.body).fontWeight(.semibold).fontDesign(.rounded)
-                        .foregroundStyle(.white)
-                    Text(package.storeProduct.localizedTitle)
+                    HStack(spacing: 8) {
+                        Text(periodLabel(for: package))
+                            .font(.body).fontWeight(.semibold).fontDesign(.rounded)
+                            .foregroundStyle(.white)
+                        if let trial = Self.freeTrialLabel(for: package) {
+                            Text(trial)
+                                .font(.caption2).fontWeight(.bold).fontDesign(.rounded)
+                                .foregroundStyle(Color(hex: "#1A1A1D"))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.sottoAccent, in: Capsule())
+                        }
+                        if let savings = savingsLabel(for: package) {
+                            Text(savings)
+                                .font(.caption2).fontWeight(.bold).fontDesign(.rounded)
+                                .foregroundStyle(Color(hex: "#10B981"))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color(hex: "#10B981").opacity(0.15), in: Capsule())
+                        }
+                    }
+                    Text(Self.priceSubtitle(for: package))
                         .font(.caption).fontDesign(.rounded)
                         .foregroundStyle(.white.opacity(0.55))
                 }
@@ -191,6 +244,73 @@ struct PremiumPaywallView: View {
         case .lifetime: "Lifetime"
         default: package.storeProduct.localizedTitle
         }
+    }
+
+    /// "SAVE 17%" on the annual plan, computed from the real monthly price
+    /// rather than hardcoded — a stale hardcoded number becomes a false
+    /// advertised discount the moment either price changes.
+    private func savingsLabel(for package: Package) -> String? {
+        guard package.packageType == .annual,
+              let monthly = premium.currentOffering?.availablePackages
+                  .first(where: { $0.packageType == .monthly })
+        else { return nil }
+
+        let yearAtMonthlyRate = monthly.storeProduct.price * 12
+        let annual = package.storeProduct.price
+        guard yearAtMonthlyRate > 0, annual < yearAtMonthlyRate else { return nil }
+
+        let ratio = (yearAtMonthlyRate - annual) / yearAtMonthlyRate
+        let percent = Int((NSDecimalNumber(decimal: ratio).doubleValue * 100).rounded())
+        guard percent > 0 else { return nil }
+        return "SAVE \(percent)%"
+    }
+
+    // MARK: Trial + renewal disclosure
+    // Read from the App Store product itself rather than hardcoded, so the
+    // trial shown always matches what the user will actually be charged —
+    // hardcoding it risks advertising a trial the product doesn't grant,
+    // which is both a bad surprise and an App Review 3.1.2 problem.
+
+    /// e.g. "1 WEEK FREE" — nil when the product has no free-trial offer.
+    static func freeTrialLabel(for package: Package) -> String? {
+        guard let intro = package.storeProduct.introductoryDiscount,
+              intro.paymentMode == .freeTrial else { return nil }
+        return "\(periodPhrase(intro.subscriptionPeriod).uppercased()) FREE"
+    }
+
+    /// e.g. "1 week free, then US$9.99/month"
+    static func priceSubtitle(for package: Package) -> String {
+        let unit = billingUnit(for: package)
+        guard let intro = package.storeProduct.introductoryDiscount,
+              intro.paymentMode == .freeTrial else {
+            return "\(package.localizedPriceString)\(unit)"
+        }
+        return "\(periodPhrase(intro.subscriptionPeriod)) free, then \(package.localizedPriceString)\(unit)"
+    }
+
+    private static func billingUnit(for package: Package) -> String {
+        guard let period = package.storeProduct.subscriptionPeriod else { return "" }
+        switch period.unit {
+        case .day: return "/day"
+        case .week: return "/week"
+        case .month: return "/month"
+        case .year: return "/year"
+        @unknown default: return ""
+        }
+    }
+
+    /// "1 week", "2 weeks", "3 days" — pluralized from the store's own period.
+    private static func periodPhrase(_ period: SubscriptionPeriod) -> String {
+        let n = period.value
+        let noun: String
+        switch period.unit {
+        case .day: noun = "day"
+        case .week: noun = "week"
+        case .month: noun = "month"
+        case .year: noun = "year"
+        @unknown default: noun = "period"
+        }
+        return "\(n) \(noun)\(n == 1 ? "" : "s")"
     }
 }
 

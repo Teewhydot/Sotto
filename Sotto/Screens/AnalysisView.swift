@@ -146,6 +146,7 @@ struct AnalysisView: View {
                 saveEntry(result)
             }
         }
+        .feedbackOverlay()
     }
     
     private func saveEntry(_ result: AnalysisResult?) {
@@ -160,15 +161,33 @@ struct AnalysisView: View {
             energyLevel: result?.energyLevel ?? 5,
             valence: result?.valence ?? 0.0,
             themes: result?.themes ?? [],
-            followUpQuestion: result?.followUpQuestion ?? "What are your thoughts on this?",
-            hiddenObservation: result?.hiddenObservation ?? "No observation available.",
+            // No canned stand-in: an entry with no real question stores "",
+            // and both screens that render it hide the section.
+            followUpQuestion: result?.followUpQuestion ?? "",
+            hiddenObservation: result?.hiddenObservation ?? "",
             replyToEntryID: replyTo
         )
 
         modelContext.insert(newEntry)
-        try? modelContext.save()
-        Haptics.success()
 
+        // This is the only save for every entry in the app. It used to be
+        // `try?` followed unconditionally by a success haptic and a dismiss,
+        // so a failed save buzzed "saved" and closed the screen over an entry
+        // that no longer existed anywhere.
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.delete(newEntry)
+            FeedbackCenter.shared.error(
+                "Couldn't save this entry",
+                error,
+                retryLabel: "Try Again",
+                retry: { saveEntry(result) }
+            )
+            return
+        }
+
+        FeedbackCenter.shared.success("Entry saved")
         onComplete()
     }
     

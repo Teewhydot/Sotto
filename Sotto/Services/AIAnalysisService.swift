@@ -16,19 +16,21 @@ struct AnalysisResult: Codable, Equatable {
 /// Runs insight analysis entirely on-device. The transcript never leaves the device.
 ///
 /// Strategy:
-/// 1. Primary — a small LLM run locally with MLX (see `LocalInsightEngine`).
-///    Downloaded once in the background after the first analysis.
+/// 1. Primary — whichever on-device model this hardware can run, chosen by
+///    `InsightEngines`: Apple's built-in model where Apple Intelligence is
+///    available (nothing to download), else the MLX model.
 /// 2. Fallback — deterministic NaturalLanguage heuristics (`NLInsightEngine`)
 ///    so every entry gets insights immediately, even on the very first use or
-///    if the local model fails.
+///    if the model fails.
 @Observable
 final class AIAnalysisService {
     var state: ViewState<AnalysisResult> = .initial
 
-    /// 0–1 while the local LLM downloads in the background; nil otherwise.
+    /// 0–1 while a model downloads in the background; nil otherwise. Stays nil
+    /// for the whole session on Apple Intelligence, which has nothing to fetch.
     var modelDownloadProgress: Float?
 
-    private let localEngine = LocalInsightEngine.shared
+    private let engines = InsightEngines.shared
     private var preparationStarted = false
 
     func analyzeTranscript(_ text: String) async {
@@ -39,16 +41,27 @@ final class AIAnalysisService {
             return
         }
 
-        // Primary — local LLM once prepared.
-        if await localEngine.isReady() {
+        // Primary — the on-device model, once it can run.
+        engines.refresh()
+        if await engines.isReady() {
             do {
-                state = .loaded(try await localEngine.analyze(text))
+                state = .loaded(try await engines.analyze(text))
                 return
             } catch {
                 // Fall through to heuristics rather than failing the entry —
-                // but leave a trail, since a persistently-failing local model
-                // would otherwise degrade every entry with no visible signal.
-                print("AIAnalysisService: local model analysis failed, using heuristics — \(error)")
+                // losing the entry would be far worse than a plainer insight.
+                print("AIAnalysisService: \(engines.backend) analysis failed, using heuristics — \(error)")
+
+                // Say so once. Silently serving weaker insights for the rest
+                // of the session is the behaviour that made a broken model
+                // indistinguishable from a working one.
+                if engines.didFallBackFromAppleIntelligence {
+                    FeedbackCenter.shared.infoOnce(
+                        "insight-engine-degraded",
+                        "Using simpler insights",
+                        detail: "The on-device language model isn't responding, so entries are analysed with built-in heuristics for now."
+                    )
+                }
             }
         }
 
@@ -61,11 +74,15 @@ final class AIAnalysisService {
 
     private func startBackgroundPreparation() {
         guard !preparationStarted else { return }
+        // Nothing to fetch on Apple Intelligence, and nowhere to fetch it to
+        // when no engine can run — either way, starting a download would be
+        // pure waste.
+        guard engines.requiresDownload else { return }
         preparationStarted = true
 
-        Task { [localEngine] in
+        Task { [engines] in
             do {
-                try await localEngine.prepare { fraction, _ in
+                try await engines.prepare { fraction, _ in
                     let captured = fraction
                     Task { @MainActor in
                         self.modelDownloadProgress = captured

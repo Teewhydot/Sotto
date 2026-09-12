@@ -96,6 +96,7 @@ struct InsightModelSetupView: View {
     private var unlockPromptView: some View {
         VStack(spacing: 12) {
             Button {
+                Haptics.tap()
                 showPaywall = true
             } label: {
                 HStack(spacing: 10) {

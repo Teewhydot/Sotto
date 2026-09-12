@@ -171,28 +171,28 @@ struct InsightsView: View {
                                         .foregroundStyle(.secondary)
                                         .lineSpacing(4)
                                 } else if let emotion = dominantEmotion {
+                                    // Free tier: arithmetic over the period.
+                                    // True, useful, and never more than a
+                                    // count — the interpretation lives in
+                                    // SynthesisSection below.
                                     Text(patternText(for: emotion))
                                         .font(.callout).fontDesign(.rounded)
                                         .foregroundStyle(.primary)
-                                        .lineSpacing(4)
-
-                                    Divider()
-
-                                    HStack {
-                                        Image(systemName: "lightbulb.fill")
-                                            .foregroundStyle(Color(hex: "#F59E0B"))
-                                        Text("Invitation")
-                                            .font(.caption).fontWeight(.semibold)
-                                            .foregroundStyle(Color(hex: "#F59E0B"))
-                                    }
-                                    Text("Take a moment to reflect on what sits beneath the \(emotion.lowercased()) feelings.")
-                                        .font(.callout).fontDesign(.rounded).italic()
-                                        .foregroundStyle(.secondary)
                                         .lineSpacing(4)
                                 }
                             }
                         }
                     }
+
+                    // Premium: patterns read across entries, each with the
+                    // entries behind it. Replaced a hardcoded "Invitation"
+                    // string that told every user, every period, to "reflect
+                    // on what sits beneath" their dominant emotion.
+                    SynthesisSection(
+                        entries: filteredEntries,
+                        periodLabel: selectedPeriod == "Week" ? "Week"
+                            : selectedPeriod == "Month" ? "Month" : "Quarter"
+                    )
 
                     Spacer(minLength: 100)
                 }
@@ -246,7 +246,11 @@ struct MoodCalendarView: View {
         VStack(alignment: .leading, spacing: 10) {
             // Day labels
             HStack(spacing: 0) {
-                ForEach(["S","M","T","W","T","F","S"], id: \.self) { d in
+                // Indexed, not `id: \.self`: Sunday and Saturday both label
+                // "S", Tuesday and Thursday both "T". Identical ids in one
+                // ForEach give SwiftUI undefined layout — two of the seven
+                // columns were interchangeable as far as it was concerned.
+                ForEach(Array(["S","M","T","W","T","F","S"].enumerated()), id: \.offset) { _, d in
                     Text(d)
                         .font(.caption2).foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity)

@@ -172,37 +172,53 @@ struct TodayView: View {
                                         .lineSpacing(5)
                                         .padding(.bottom, 6)
 
-                                    Button {
-                                        withAnimation { showBrief.toggle() }
-                                    } label: {
-                                        Text(showBrief ? "Show less" : "Read more →")
-                                            .font(.caption).fontWeight(.semibold)
-                                            .foregroundStyle(Color.sottoAccent)
-                                    }
-
-                                    if showBrief {
-                                        Divider()
-                                        VStack(alignment: .leading, spacing: 6) {
-                                            Text(entry.hiddenObservation)
-                                                .font(.callout).fontDesign(.rounded)
-                                                .foregroundStyle(.primary)
-                                                .lineSpacing(4)
-
-                                            Divider()
-
-                                            HStack {
-                                                Image(systemName: "lightbulb.fill")
-                                                    .foregroundStyle(Color(hex: "#F59E0B"))
-                                                Text("Invitation")
-                                                    .font(.caption).fontWeight(.semibold)
-                                                    .foregroundStyle(Color(hex: "#F59E0B"))
-                                            }
-                                            Text(entry.followUpQuestion)
-                                                .font(.callout).fontDesign(.rounded).italic()
-                                                .foregroundStyle(.primary)
-                                                .lineSpacing(3)
+                                    // "Read more" only when there is more to
+                                    // read. Both interpretive fields are empty
+                                    // for entries analysed without a model, and
+                                    // the button used to expand into a bare
+                                    // divider with nothing under it.
+                                    if !entry.hiddenObservation.isEmpty
+                                        || !entry.followUpQuestion.isEmpty {
+                                        Button {
+                                            withAnimation { showBrief.toggle() }
+                                        } label: {
+                                            Text(showBrief ? "Show less" : "Read more →")
+                                                .font(.caption).fontWeight(.semibold)
+                                                .foregroundStyle(Color.sottoAccent)
                                         }
-                                        .transition(.opacity.combined(with: .move(edge: .top)))
+
+                                        if showBrief {
+                                            Divider()
+                                            VStack(alignment: .leading, spacing: 6) {
+                                                if !entry.hiddenObservation.isEmpty {
+                                                    Text(entry.hiddenObservation)
+                                                        .font(.callout).fontDesign(.rounded)
+                                                        .foregroundStyle(.primary)
+                                                        .lineSpacing(4)
+                                                }
+
+                                                if !entry.followUpQuestion.isEmpty {
+                                                    // Separator only when the
+                                                    // observation preceded it.
+                                                    if !entry.hiddenObservation.isEmpty {
+                                                        Divider()
+                                                    }
+
+                                                    HStack {
+                                                        Image(systemName: "lightbulb.fill")
+                                                            .foregroundStyle(Color(hex: "#F59E0B"))
+                                                        Text("Invitation")
+                                                            .font(.caption).fontWeight(.semibold)
+                                                            .foregroundStyle(Color(hex: "#F59E0B"))
+                                                    }
+                                                    Text(entry.followUpQuestion)
+                                                        .font(.callout).fontDesign(.rounded).italic()
+                                                        .foregroundStyle(.primary)
+                                                        .lineSpacing(3)
+                                                }
+                                            }
+                                            .transition(.opacity.combined(with: .move(edge: .top)))
+                                        }
                                     }
                                 }
                             } else {

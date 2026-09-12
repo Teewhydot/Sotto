@@ -19,14 +19,23 @@ struct SettingsView: View {
     @AppStorage("notificationSound") private var notificationSound = "Whisper"
 
     @State private var showResetAlert = false
-    @State private var showExportSheet = false
-    @State private var showPrivacyPolicy = false
     @State private var showEditProfile = false
     @State private var nameDraft = ""
-    @State private var faceIDUnavailableMessage: String?
     @State private var pendingRemoval: RemovalTarget?
-    @State private var dataErrorMessage: String?
-    @State private var showPaywall = false
+
+    /// One sheet at a time, from one place. Separate `.sheet` modifiers —
+    /// especially stacked on the same view, or attached to a `Section`
+    /// inside the `List` — fight over the same presentation host: UIKit
+    /// rejects the second with "presenting while a presentation is in
+    /// progress" and SwiftUI resolves it by tearing the new sheet straight
+    /// back down (the "opens then instantly closes, works on the second
+    /// tap" bug).
+    @State private var activeSheet: ActiveSheet?
+
+    private enum ActiveSheet: String, Identifiable {
+        case export, privacyPolicy, paywall, subscription
+        var id: String { rawValue }
+    }
 
     private enum RemovalTarget {
         case whisper
@@ -60,6 +69,10 @@ struct SettingsView: View {
             ) {
                 Button("Remove", role: .destructive) {
                     ModelLibrary.shared.deleteWhisperModels()
+                    FeedbackCenter.shared.success(
+                        "Transcription model removed",
+                        detail: "Dictation will use Apple's recognizer until it re-downloads."
+                    )
                 }
             } message: {
                 Text("Dictation will fall back to Apple's speech recognizer. The model re-downloads next time you record.")
@@ -73,7 +86,13 @@ struct SettingsView: View {
                 titleVisibility: .visible
             ) {
                 Button("Remove", role: .destructive) {
-                    Task { await ModelLibrary.shared.deleteInsightModel() }
+                    Task {
+                        await ModelLibrary.shared.deleteInsightModel()
+                        FeedbackCenter.shared.success(
+                            "Insights model removed",
+                            detail: "Insights will use on-device heuristics until it re-downloads."
+                        )
+                    }
                 }
             } message: {
                 Text("Insights and transcript cleanup will use simpler on-device heuristics. The model re-downloads next time it's needed.")
@@ -84,30 +103,28 @@ struct SettingsView: View {
                 Button("Delete", role: .destructive) {
                     do {
                         try modelContext.delete(model: JournalEntry.self)
+                        try modelContext.save()
+                        FeedbackCenter.shared.success("All data deleted")
                     } catch {
-                        dataErrorMessage = "Some entries couldn't be deleted: \(error.localizedDescription)"
+                        modelContext.rollback()
+                        FeedbackCenter.shared.error("Couldn't delete your data", error)
                     }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will permanently erase every journal entry and insight. This cannot be undone.")
             }
-            .alert(
-                "Something went wrong",
-                isPresented: Binding(
-                    get: { dataErrorMessage != nil },
-                    set: { if !$0 { dataErrorMessage = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(dataErrorMessage ?? "")
-            }
-            .sheet(isPresented: $showExportSheet) {
-                ShareSheet(items: [generateExportString()])
-            }
-            .sheet(isPresented: $showPrivacyPolicy) {
-                NavigationStack { PrivacyPolicyView() }
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .export:
+                    ShareSheet(items: [generateExportString()])
+                case .privacyPolicy:
+                    NavigationStack { PrivacyPolicyView() }
+                case .paywall:
+                    PremiumPaywallView(onComplete: { activeSheet = nil })
+                case .subscription:
+                    SubscriptionDetailView()
+                }
             }
             .alert("Edit profile", isPresented: $showEditProfile) {
                 TextField("Name", text: $nameDraft)
@@ -116,17 +133,6 @@ struct SettingsView: View {
                     if !trimmed.isEmpty { userDisplayName = trimmed }
                 }
                 Button("Cancel", role: .cancel) {}
-            }
-            .alert(
-                "Face ID unavailable",
-                isPresented: Binding(
-                    get: { faceIDUnavailableMessage != nil },
-                    set: { if !$0 { faceIDUnavailableMessage = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(faceIDUnavailableMessage ?? "")
             }
         }
     }
@@ -275,6 +281,28 @@ struct SettingsView: View {
         Section("On-Device Models") {
             let library = ModelLibrary.shared
 
+            // Involuntary churn — a failed card the user never noticed — is
+            // a meaningful share of subscription losses. Surfacing it where
+            // they can act beats silently letting access lapse.
+            if case .billingIssue = PremiumManager.shared.subscriptionStatus {
+                Button {
+                    activeSheet = .subscription
+                } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Color(hex: "#F59E0B"))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Payment problem")
+                                .font(.subheadline).fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+                            Text("Update your payment method to keep Smart Insights.")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+
             modelRow(
                 title: "Transcription",
                 subtitle: "On-device speech-to-text",
@@ -295,9 +323,19 @@ struct SettingsView: View {
                 isLocked: !library.isInsightEntitled,
                 downloadAction: { Task { await library.downloadInsightModel() } }
             )
-        }
-        .sheet(isPresented: $showPaywall) {
-            PremiumPaywallView(onComplete: { showPaywall = false })
+
+            if library.isInsightEntitled {
+                Button {
+                    activeSheet = .subscription
+                } label: {
+                    HStack {
+                        Text("Manage Subscription")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption).foregroundStyle(.tertiary)
+                    }
+                }
+            }
         }
     }
 
@@ -357,7 +395,7 @@ struct SettingsView: View {
             }
         } else if isLocked {
             Button {
-                showPaywall = true
+                activeSheet = .paywall
             } label: {
                 HStack {
                     Text("Unlock Smart Insights")
@@ -435,7 +473,7 @@ struct SettingsView: View {
             }
 
             Button {
-                showPrivacyPolicy = true
+                activeSheet = .privacyPolicy
             } label: {
                 Label("Privacy Policy", systemImage: "hand.raised")
                     .foregroundStyle(.primary)
@@ -480,9 +518,30 @@ struct SettingsView: View {
 
     private func rescheduleReminders(hour: Int) async {
         let granted = await NotificationManager.shared.scheduleDailyReminder(hour: hour, soundName: notificationSound)
-        if !granted {
+        guard granted else {
+            // Flipping the switch back on its own reads as a broken toggle.
+            // The only fix is in iOS Settings, so say that.
             notificationsEnabled = false
+            FeedbackCenter.shared.error(
+                "Reminders are turned off for Sotto",
+                detail: "Allow notifications for Sotto in iOS Settings to get a daily reminder."
+            )
+            return
         }
+        FeedbackCenter.shared.success(
+            "Daily reminder set",
+            detail: "You'll be nudged at \(Self.hourLabel(hour))."
+        )
+    }
+
+    /// "9 AM" / "10 PM" — matches the wording of the hour picker.
+    private static func hourLabel(_ hour: Int) -> String {
+        var components = DateComponents()
+        components.hour = hour
+        let date = Calendar.current.date(from: components) ?? Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h a"
+        return formatter.string(from: date)
     }
 
     // MARK: - Face ID validation
@@ -494,9 +553,11 @@ struct SettingsView: View {
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             faceIDEnabled = false
-            faceIDUnavailableMessage =
-                error?.localizedDescription
-                ?? "This device has no Face ID or passcode configured, so the app lock cannot be enabled."
+            FeedbackCenter.shared.error(
+                "App lock can't be enabled",
+                detail: error?.localizedDescription
+                    ?? "This device has no Face ID or passcode configured, so the app lock cannot be enabled."
+            )
             return
         }
     }
@@ -507,8 +568,13 @@ struct SettingsView: View {
         appIcon = name
         guard UIApplication.shared.supportsAlternateIcons else { return }
         let target: String? = (name == "Default") ? nil : name
-        UIApplication.shared.setAlternateIconName(target) { _ in
-            // Icon swap failures (e.g. provisioning limitations) keep Default.
+        UIApplication.shared.setAlternateIconName(target) { error in
+            guard let error else { return }
+            // The icon silently staying on Default reads as a broken row.
+            Task { @MainActor in
+                appIcon = "Default"
+                FeedbackCenter.shared.error("Couldn't change the app icon", error)
+            }
         }
     }
 
@@ -524,7 +590,7 @@ struct SettingsView: View {
 
     private func exportData() {
         Haptics.tap()
-        showExportSheet = true
+        activeSheet = .export
     }
 
     private func generateExportString() -> String {

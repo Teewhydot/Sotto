@@ -2,7 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Merged with the generated Info.plist at build time.
-	     Sotto runs fully on-device — no API keys or secrets required. -->
+	<!-- Merged with the generated Info.plist at build time. Sotto itself
+	     runs fully on-device; RevenueCatAPIKey is the one exception, for
+	     Smart Insights' billing/entitlement checks (see Secrets.xcconfig).
+	     Custom keys must live here, not as INFOPLIST_KEY_* build settings —
+	     Xcode's auto-generation only recognizes Apple's own Info.plist keys
+	     and silently drops anything else. -->
+	<key>RevenueCatAPIKey</key>
+	<string>$(REVENUECAT_API_KEY)</string>
 </dict>
 </plist>

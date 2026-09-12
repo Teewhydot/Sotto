@@ -21,8 +21,19 @@ enum NLInsightEngine {
             energyLevel: energy(lower: lower),
             valence: valence,
             themes: themes,
-            followUpQuestion: followUpQuestion(for: emotion, seed: transcript),
-            hiddenObservation: hiddenObservation(emotion: emotion, themes: themes, valence: valence)
+            // Deliberately empty. This engine has no model behind it, and a
+            // canned question picked by `transcript.count % 3` is not a
+            // reflection on the entry — it only looks like one. The screens
+            // that show it hide the section when it is blank, which is the
+            // honest result: no question rather than a fake one.
+            followUpQuestion: "",
+            // Empty for the same reason as the question above. Interpolating
+            // a theme into "You didn't say it outright, but the way you talked
+            // about \(theme)..." produces a sentence that claims to have
+            // noticed something unsaid, when all it did was substitute a
+            // keyword into one of five templates. Reading an entry between the
+            // lines needs a model.
+            hiddenObservation: ""
         )
     }
 
@@ -113,56 +124,6 @@ enum NLInsightEngine {
 
     // MARK: Generative-ish text
 
-    private static let followUpQuestions: [String: [String]] = [
-        "Anxious": [
-            "What's one small part of this you could set down for today?",
-            "If the worry turned out to be smaller than it feels, what would you do first?",
-        ],
-        "Sad": [
-            "What would comfort look like for you right now?",
-            "Is there someone you'd like to be near this week?",
-        ],
-        "Frustrated": [
-            "What boundary or change would take the heat out of this?",
-            "What part of this is yours to carry, and what isn't?",
-        ],
-        "Joyful": [
-            "How could you make space for more of what made today good?",
-            "Who would enjoy hearing about this from you?",
-        ],
-        "Peaceful": [
-            "What helped you find this calm, and how do you keep it close?",
-            "What's worth savoring from today?",
-        ],
-    ]
-
-    private static let defaultQuestions = [
-        "What's one thing you'd like to understand better about today?",
-        "If tomorrow had one small improvement, what would it be?",
-        "What did you learn about yourself writing this?",
-    ]
-
-    private static func followUpQuestion(for emotion: String, seed: String) -> String {
-        let options = followUpQuestions[emotion] ?? defaultQuestions
-        // Stable across launches (unlike hashable-based picks).
-        return options[abs(seed.count) % options.count]
-    }
-
-    private static func hiddenObservation(emotion: String, themes: [String], valence: Double) -> String {
-        let theme = themes.first ?? "this"
-        switch (emotion, valence) {
-        case ("Anxious", _), ("Sad", _):
-            return "You didn't say it outright, but the way you talked about \(theme) suggests you're carrying more weight than you're letting on."
-        case ("Joyful", _), ("Peaceful", _):
-            return "Beneath the surface, \(theme) seems to matter to you more deeply than a passing good mood."
-        case ("Frustrated", _):
-            return "Your frustration around \(theme) reads like caring about something you can't fully control."
-        default:
-            return valence < 0
-                ? "There's a quieter strain under your words about \(theme) that might be worth sitting with."
-                : "There's a steady current of hope in how you approach \(theme), even when you don't name it."
-        }
-    }
 
     private static func summarize(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

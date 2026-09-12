@@ -90,6 +90,8 @@ enum InsightEngineError: LocalizedError {
     case timedOut
     case simulatorUnsupported
     case premiumRequired
+    case emptyTranscript
+    case noEngineAvailable
 
     var errorDescription: String? {
         switch self {
@@ -99,6 +101,8 @@ enum InsightEngineError: LocalizedError {
         case .timedOut: "Local model took too long to respond."
         case .simulatorUnsupported: "Smart Insights needs a real device — MLX requires direct Metal GPU access, which the iOS Simulator doesn't provide."
         case .premiumRequired: "Smart Insights is a premium feature."
+        case .emptyTranscript: "There's nothing in this entry to reflect on yet."
+        case .noEngineAvailable: "Smart Insights can't run on this device."
         }
     }
 }

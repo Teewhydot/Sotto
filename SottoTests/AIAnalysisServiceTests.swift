@@ -74,8 +74,16 @@ final class AIAnalysisServiceTests: XCTestCase {
         XCTAssertTrue((1...10).contains(result.energyLevel))
         XCTAssertTrue((-1.0...1.0).contains(result.valence))
         XCTAssertEqual(result.themes.count, 3)
-        XCTAssertFalse(result.followUpQuestion.isEmpty)
-        XCTAssertFalse(result.hiddenObservation.isEmpty)
+
+        // Both interpretive fields are empty by design. This engine has no
+        // model behind it: the question came from a canned pool indexed by
+        // `transcript.count % 3`, and the observation from five templates with
+        // a theme interpolated in — each read as a reflection on the entry
+        // without being one. EntryDetailView and TodayView hide these sections
+        // when they are blank, so the honest result is nothing rather than a
+        // plausible-sounding stand-in.
+        XCTAssertTrue(result.followUpQuestion.isEmpty)
+        XCTAssertTrue(result.hiddenObservation.isEmpty)
     }
 
     func testNLFallbackIsDeterministic() {

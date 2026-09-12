@@ -251,6 +251,7 @@ struct RecordingView: View {
             speechService.stopRecording()
             speechService.unloadModel()
         }
+        .feedbackOverlay()
         .onChange(of: scenePhase) { _, phase in
             // Backgrounding mid-recording (a call, switching apps, locking
             // the phone) would otherwise leave the audio session force-
@@ -303,6 +304,22 @@ struct RecordingView: View {
             isCleaning = true
             await speechService.cleanTranscriptNow()
             isCleaning = false
+
+            // Nothing was captured — a muted mic, a silent room, or a
+            // recognizer that produced nothing. Handing "" to analysis would
+            // save an empty entry and show "Analysis failed: transcript is
+            // empty", blaming the analysis for a capture problem. Say what
+            // actually happened and stay on the recorder so the tap that
+            // starts again is the next one.
+            guard !speechService.transcript
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                FeedbackCenter.shared.error(
+                    "No speech was captured",
+                    detail: "Nothing was picked up from the microphone. Check that it isn't muted or covered, then record again."
+                )
+                return
+            }
+
             showAnalysis = true
         }
     }

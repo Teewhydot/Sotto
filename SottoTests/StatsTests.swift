@@ -28,14 +28,53 @@ final class StatsTests: XCTestCase {
         XCTAssertEqual(Stats.currentStreak(days: days), 2)
     }
 
-    func testStreakBreakResets() {
-        let days: Set<Date> = [day(0), day(2)]
-        XCTAssertEqual(Stats.currentStreak(days: days), 1)
-    }
-
     func testStreakGapAfterYesterday() {
         let days: Set<Date> = [day(3), day(4)]
         XCTAssertEqual(Stats.currentStreak(days: days), 0)
+    }
+
+    // MARK: - Streak forgiveness (one missed day per rolling 7 days)
+
+    /// A single miss is absorbed: the streak survives, but the forgiven day
+    /// isn't credited — 2 days written, not 3.
+    func testSingleMissIsForgiven() {
+        let days: Set<Date> = [day(0), day(2)]
+        XCTAssertEqual(Stats.currentStreak(days: days), 2)
+    }
+
+    func testForgivenessKeepsLongerStreakAlive() {
+        // Missed day 3 only.
+        let days: Set<Date> = [day(0), day(1), day(2), day(4), day(5)]
+        XCTAssertEqual(Stats.currentStreak(days: days), 5)
+    }
+
+    /// Two misses inside the same 7-day window: only the first is forgiven,
+    /// the second ends the streak.
+    func testSecondMissWithinWindowBreaksStreak() {
+        let days: Set<Date> = [day(0), day(2), day(4)]
+        XCTAssertEqual(Stats.currentStreak(days: days), 2)
+    }
+
+    /// Once the window has passed, forgiveness is available again.
+    func testForgivenessRenewsAfterWindow() {
+        // Misses at day 1 and day 9 — 8 apart, so both are forgiven.
+        let days: Set<Date> = [
+            day(0),
+            day(2), day(3), day(4), day(5), day(6), day(7), day(8),
+            day(10), day(11),
+        ]
+        XCTAssertEqual(Stats.currentStreak(days: days), 10)
+    }
+
+    /// Forgiveness never invents a streak out of nothing.
+    func testForgivenessDoesNotResurrectAbandonedStreak() {
+        let days: Set<Date> = [day(5), day(6)]
+        XCTAssertEqual(Stats.currentStreak(days: days), 0)
+    }
+
+    func testTwoConsecutiveMissesBreakStreak() {
+        let days: Set<Date> = [day(0), day(3)]
+        XCTAssertEqual(Stats.currentStreak(days: days), 1)
     }
 
     // MARK: - Lexical diversity

@@ -53,6 +53,60 @@ final class NotificationManager {
         center.removePendingNotificationRequests(withIdentifiers: [Self.reminderIdentifier])
     }
 
+    // MARK: - Trial ending reminder
+
+    private static let trialReminderIdentifier = "ng.com.sirteefyapps.Sotto.trialEnding"
+
+    /// Schedules a one-shot reminder ~2 days before a free trial converts.
+    /// Deliberately states the charge plainly rather than pitching: a
+    /// surprise charge is the single fastest way to earn a refund request
+    /// and a one-star review, and Apple's own pre-trial reminder is not
+    /// something to rely on as the user's only warning.
+    ///
+    /// Purely local — derived from the entitlement's expiry date, no server
+    /// and no tracking involved.
+    @discardableResult
+    func scheduleTrialEndingReminder(trialEnds: Date, priceDescription: String) async -> Bool {
+        cancelTrialEndingReminder()
+        guard await requestAuthorization() else { return false }
+
+        let fireDate = Calendar.current.date(byAdding: .day, value: -2, to: trialEnds) ?? trialEnds
+        // Nothing to schedule if that moment has already passed.
+        guard fireDate > .now else { return false }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Your Sotto trial ends soon"
+        content.body = "You'll be charged \(priceDescription) on \(Self.trialDateFormatter.string(from: trialEnds)) unless you cancel in App Store settings."
+        content.sound = .default
+
+        let components = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute], from: fireDate
+        )
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: Self.trialReminderIdentifier,
+            content: content,
+            trigger: trigger
+        )
+        do {
+            try await center.add(request)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func cancelTrialEndingReminder() {
+        center.removePendingNotificationRequests(withIdentifiers: [Self.trialReminderIdentifier])
+    }
+
+    private static let trialDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
+
     private static let reminderBodies = [
         "How did today actually feel? Say it out loud — Sotto will listen.",
         "A minute of honesty beats an hour of scrolling.",

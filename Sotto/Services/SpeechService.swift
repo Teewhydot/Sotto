@@ -376,16 +376,22 @@ final class SpeechService {
         }
     }
 
-    /// Cleans one finalized dictation chunk: local LLM when loaded, quick
-    /// heuristics otherwise (and kicks off model download for next time).
+    /// Cleans one finalized dictation chunk: the on-device model when it can
+    /// run, quick heuristics otherwise.
+    ///
+    /// Routed through `InsightEngines` rather than straight at MLX so that a
+    /// device with Apple Intelligence never downloads 700 MB just to punctuate
+    /// dictation — which is what happened while this called the MLX engine
+    /// directly.
     private func cleanDelta(_ delta: String) async -> String {
-        if await LocalInsightEngine.shared.isReady() {
-            if let cleaned = try? await LocalInsightEngine.shared.clean(delta), !cleaned.isEmpty {
+        let engines = InsightEngines.shared
+        if await engines.isReady() {
+            if let cleaned = try? await engines.clean(delta), !cleaned.isEmpty {
                 return cleaned
             }
-        } else {
+        } else if engines.requiresDownload {
             Task.detached {
-                try? await LocalInsightEngine.shared.prepare { _, _ in }
+                try? await InsightEngines.shared.prepare { _, _ in }
             }
         }
         return NLInsightEngine.lightCleanup(delta)
@@ -399,11 +405,12 @@ final class SpeechService {
         guard !raw.isEmpty else { return }
 
         var candidate: String?
-        if await LocalInsightEngine.shared.isReady() {
-            candidate = try? await LocalInsightEngine.shared.clean(raw)
-        } else {
+        let engines = InsightEngines.shared
+        if await engines.isReady() {
+            candidate = try? await engines.clean(raw)
+        } else if engines.requiresDownload {
             Task.detached {
-                try? await LocalInsightEngine.shared.prepare { _, _ in }
+                try? await InsightEngines.shared.prepare { _, _ in }
             }
         }
 
@@ -457,17 +464,53 @@ final class SpeechService {
         // Skip absurdly short recordings (< 0.4 s of audio).
         guard samples.count > Int(recordSampleRate * 0.4) else { return false }
 
-        let wavURL = Self.writeTemporaryWav(samples: samples, sampleRate: 16_000)
+        // The mic tap captures at the hardware rate (48 kHz on every current
+        // iPhone); Whisper is a 16 kHz model. Writing the 48 kHz samples under
+        // a 16 kHz header does not convert them — it just relabels them, so
+        // the model hears the entry stretched to 3x length and pitched an
+        // octave and a half down. That is not speech to Whisper, and it
+        // answered accordingly: "[BLANK_AUDIO]", "[SIGHING]".
+        let resampled = Self.resample(samples, from: recordSampleRate, to: Self.whisperSampleRate)
+        guard !resampled.isEmpty else { return false }
+
+        let wavURL = Self.writeTemporaryWav(samples: resampled, sampleRate: Self.whisperSampleRate)
         guard let wavURL else { return false }
         defer { try? FileManager.default.removeItem(at: wavURL) }
 
         do {
-            let results = try await whisperKit!.transcribe(audioPath: wavURL.path)
-            let text = results.map(\.text).joined(separator: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty, text.count >= transcript.trimmingCharacters(in: .whitespaces).count / 2 else {
-                return false
-            }
+            // Defaults leave `skipSpecialTokens` false, which lets
+            // `<|startoftranscript|>` and every `<|0.00|>` timestamp into
+            // `.text`. The language is pinned to match the SFSpeech
+            // recognizer, which is already fixed to en-US — leaving Whisper to
+            // guess invites it to "detect" another language from a noisy
+            // opening second and translate the entry.
+            let results = try await whisperKit!.transcribe(
+                audioPath: wavURL.path,
+                decodeOptions: DecodingOptions(
+                    language: "en",
+                    skipSpecialTokens: true,
+                    withoutTimestamps: true,
+                    suppressBlank: true
+                )
+            )
+            let raw = results.map(\.text).joined(separator: " ")
+            let text = Self.strippingNonSpeechAnnotations(raw)
+
+            let existing = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Nothing but annotations came back — Whisper heard no speech.
+            // Keep whatever SFSpeech captured instead of overwriting a real
+            // transcript with the model's note that it heard silence.
+            guard !text.isEmpty else { return false }
+
+            // Guard against Whisper truncating. Note this deliberately still
+            // accepts a Whisper result when `existing` is empty: SFSpeech
+            // failing while Whisper succeeds is a genuine win. It is only safe
+            // to allow that because `text` is now annotation-free — the same
+            // comparison against unstripped output is what let "[SIGHING]
+            // [BLANK_AUDIO]" through.
+            guard text.count >= existing.count / 2 else { return false }
+
             // WhisperKit's transcribe isn't actor-isolated, so resumption
             // after the await above isn't guaranteed to be on the main thread.
             await MainActor.run { self.transcript = text }
@@ -476,6 +519,27 @@ final class SpeechService {
             // Keep the SFSpeech transcript as a graceful fallback.
             return false
         }
+    }
+
+    /// The sample rate every Whisper model expects.
+    static let whisperSampleRate: Double = 16_000
+
+    /// Removes Whisper's non-speech markup from a transcription.
+    ///
+    /// Whisper reports sounds it heard but could not transcribe as bracketed
+    /// or parenthesised annotations — `[BLANK_AUDIO]`, `[MUSIC]`, `(sighs)`,
+    /// `*laughs*` — and any residual `<|...|>` control tokens look the same to
+    /// a reader. Dictated prose never legitimately contains these delimiters,
+    /// so removing them wholesale is safe and leaves only what was actually
+    /// said. An entry that was pure non-speech correctly reduces to "".
+    static func strippingNonSpeechAnnotations(_ text: String) -> String {
+        var out = text
+        for pattern in [#"<\|[^|>]*\|>"#, #"\[[^\]]*\]"#, #"\([^)]*\)"#, #"\*[^*]*\*"#] {
+            out = out.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+        }
+        return out
+            .replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Sample capture

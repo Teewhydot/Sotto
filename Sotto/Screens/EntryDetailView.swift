@@ -9,9 +9,59 @@ struct EntryDetailView: View {
     @State private var showFullTranscript = false
     @State private var showObservation = false
     @State private var showRecording = false
-    @State private var showShareSheet = false
     @State private var showDeleteAlert = false
-    @State private var deleteErrorMessage: String?
+    /// Single sheet host — a second `.sheet` modifier on this same view
+    /// would fight the first over one presentation host (the bug that made
+    /// sheets open and instantly close in Settings).
+    @State private var activeSheet: ActiveSheet?
+
+    private enum ActiveSheet: String, Identifiable {
+        case share, paywall
+        var id: String { rawValue }
+    }
+    /// Dismissed for this reading session only — deliberately not persisted
+    /// as "never show again", but also never nagging twice in one sitting.
+    @State private var upgradePromptDismissed = false
+
+    @ViewBuilder
+    private var upgradePrompt: some View {
+        if !upgradePromptDismissed {
+            SottoCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .font(.caption)
+                            .foregroundStyle(Color.sottoAccent)
+                        Text("This is the simple reflection")
+                            .font(.caption).fontWeight(.semibold)
+                            .foregroundStyle(Color.sottoAccent)
+                        Spacer()
+                        Button {
+                            withAnimation(.easeOut(duration: 0.2)) { upgradePromptDismissed = true }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+
+                    Text("Smart Insights reads the same entry with the on-device AI model — for emotion, themes, and the question underneath what you said.")
+                        .font(.callout).fontDesign(.rounded)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+
+                    Button {
+                        activeSheet = .paywall
+                    } label: {
+                        Text("See what it adds")
+                            .font(.caption).fontWeight(.semibold).fontDesign(.rounded)
+                            .foregroundStyle(Color.sottoAccent)
+                    }
+                }
+            }
+        }
+    }
 
     /// The entry this one replied to, resolved lazily — `replyToEntryID` is a
     /// bare UUID (not a SwiftData relationship), so the original may have
@@ -119,69 +169,95 @@ struct EntryDetailView: View {
                 }
 
                 // ── Follow-up question ────────────────────────────────────
-                SottoCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "bubble.left.fill")
-                                .foregroundStyle(Color.sottoAccent)
-                                .font(.caption)
-                            Text("A question for you")
-                                .font(.caption).fontWeight(.semibold)
-                                .foregroundStyle(Color.sottoAccent)
-                        }
+                // Rendered only when there is one. The model's question is
+                // dropped by `FoundationInsightEngine.sanitise` when it reads
+                // as advice, and entries analysed without a model carry none
+                // at all — both cases used to draw an empty card headed
+                // "A question for you" with nothing under it, and a
+                // "Respond to this" button responding to nothing.
+                if !entry.followUpQuestion.isEmpty {
+                    SottoCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "bubble.left.fill")
+                                    .foregroundStyle(Color.sottoAccent)
+                                    .font(.caption)
+                                Text("A question for you")
+                                    .font(.caption).fontWeight(.semibold)
+                                    .foregroundStyle(Color.sottoAccent)
+                            }
 
-                        Text(entry.followUpQuestion)
-                            .font(.body).fontDesign(.rounded)
-                            .foregroundStyle(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .lineSpacing(3)
+                            Text(entry.followUpQuestion)
+                                .font(.body).fontDesign(.rounded)
+                                .foregroundStyle(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .lineSpacing(3)
 
-                        Button {
-                            showRecording = true
-                        } label: {
-                            Label("Respond to this", systemImage: "arrow.turn.down.right")
-                                .font(.caption).fontWeight(.semibold)
-                                .foregroundStyle(Color.sottoAccent)
+                            Button {
+                                showRecording = true
+                            } label: {
+                                Label("Respond to this", systemImage: "arrow.turn.down.right")
+                                    .font(.caption).fontWeight(.semibold)
+                                    .foregroundStyle(Color.sottoAccent)
+                            }
                         }
                     }
                 }
 
                 // ── Hidden observation ────────────────────────────────────
-                SottoCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "eye.fill")
-                                .foregroundStyle(.secondary)
-                                .font(.caption)
-                            Text("Something I noticed")
-                                .font(.caption).fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                        }
+                // Guarded like the question above, and for a sharper reason:
+                // this card promises "Something I noticed" behind a
+                // "Tap to reveal" teaser. With nothing to reveal, the tap and
+                // the auto-reveal below both resolve to an empty card — the
+                // build-up is the whole point, so an empty one is worse here
+                // than anywhere else on the screen.
+                if !entry.hiddenObservation.isEmpty {
+                    SottoCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "eye.fill")
+                                    .foregroundStyle(.secondary)
+                                    .font(.caption)
+                                Text("Something I noticed")
+                                    .font(.caption).fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                            }
 
-                        if showObservation {
-                            Text(entry.hiddenObservation)
-                                .font(.callout).fontDesign(.rounded)
-                                .foregroundStyle(.primary)
-                                .lineSpacing(3)
-                                .transition(.opacity)
-                        } else {
-                            Label("Tap to reveal", systemImage: "hand.tap.fill")
-                                .font(.callout)
-                                .foregroundStyle(.tertiary)
+                            if showObservation {
+                                Text(entry.hiddenObservation)
+                                    .font(.callout).fontDesign(.rounded)
+                                    .foregroundStyle(.primary)
+                                    .lineSpacing(3)
+                                    .transition(.opacity)
+                            } else {
+                                Label("Tap to reveal", systemImage: "hand.tap.fill")
+                                    .font(.callout)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .onTapGesture {
+                            withAnimation(.easeIn(duration: 0.45)) {
+                                showObservation = true
+                            }
                         }
                     }
-                    .onTapGesture {
-                        withAnimation(.easeIn(duration: 0.45)) {
-                            showObservation = true
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            withAnimation(.easeIn(duration: 0.45)) {
+                                showObservation = true
+                            }
                         }
                     }
                 }
-                .onAppear {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                        withAnimation(.easeIn(duration: 0.45)) {
-                            showObservation = true
-                        }
-                    }
+
+                // ── Upgrade prompt ────────────────────────────────────────
+                // Placed here on purpose: this is the moment the reader has
+                // just finished their own reflection, so the comparison is
+                // concrete rather than abstract. Honest framing — the free
+                // insight is real and stays, this only says what the fuller
+                // version reads for. No countdown, no lockout, dismissible.
+                if !ModelLibrary.shared.isInsightEntitled {
+                    upgradePrompt
                 }
 
                 // ── Transcript ────────────────────────────────────────────
@@ -254,7 +330,7 @@ struct EntryDetailView: View {
 
                 Menu {
                     Button {
-                        showShareSheet = true
+                        activeSheet = .share
                     } label: {
                         Label("Share Transcript", systemImage: "square.and.arrow.up")
                     }
@@ -273,8 +349,13 @@ struct EntryDetailView: View {
         .fullScreenCover(isPresented: $showRecording) {
             RecordingView(replyTo: entry.id)
         }
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: [shareText])
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .share:
+                ShareSheet(items: [shareText])
+            case .paywall:
+                PremiumPaywallView(onComplete: { activeSheet = nil })
+            }
         }
         .alert("Delete Entry?", isPresented: $showDeleteAlert) {
             Button("Cancel", role: .cancel) { }
@@ -284,29 +365,27 @@ struct EntryDetailView: View {
         } message: {
             Text("This entry will be permanently deleted.")
         }
-        .alert(
-            "Something went wrong",
-            isPresented: Binding(
-                get: { deleteErrorMessage != nil },
-                set: { if !$0 { deleteErrorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(deleteErrorMessage ?? "")
-        }
     }
 
     // MARK: - Actions
 
     private func deleteEntry() {
-        Haptics.warning()
         modelContext.delete(entry)
         do {
             try modelContext.save()
+            FeedbackCenter.shared.success("Entry deleted")
             dismiss()
         } catch {
-            deleteErrorMessage = "The entry couldn't be deleted: \(error.localizedDescription)"
+            // The delete is only staged in the context until `save()`; roll it
+            // back so the entry the user was just told survived is actually
+            // still there when they look.
+            modelContext.rollback()
+            FeedbackCenter.shared.error(
+                "Couldn't delete this entry",
+                error,
+                retryLabel: "Try Again",
+                retry: { deleteEntry() }
+            )
         }
     }
 

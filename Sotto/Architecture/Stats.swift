@@ -2,26 +2,56 @@ import Foundation
 
 // MARK: - Pure statistics helpers (unit-testable, no SwiftData dependencies)
 
-enum Stats {
+/// Pure arithmetic over entry data. `nonisolated` because none of it touches
+/// UI state and the synthesis clustering calls it from an actor — under this
+/// project's MainActor-by-default isolation it would otherwise be main-actor
+/// bound for no reason.
+nonisolated enum Stats {
+
+    /// How many walked-back days must pass before another missed day can be
+    /// forgiven. One miss per week, silently.
+    private static let forgivenessWindowDays = 7
 
     /// Consecutive-day streak ending today or yesterday, from day-started dates.
+    ///
+    /// A single missed day is forgiven per rolling 7-day window, without
+    /// telling the user or asking them to spend anything. Rationale: the
+    /// failure mode of a strict streak isn't forgetting one day, it's
+    /// abandoning the habit *because* the counter reset to zero — people
+    /// with longer streaks quit harder after breaking one. Forgiving quietly
+    /// keeps the encouragement and drops the punishment.
+    ///
+    /// A forgiven day is not *credited* — it keeps the streak alive but
+    /// doesn't count as an entry, so the number still reflects real days
+    /// written.
     static func currentStreak(days: Set<Date>, today: Date = Date(), calendar: Calendar = .current) -> Int {
-        guard !days.isEmpty else { return 0 }
+        let written = Set(days.map { calendar.startOfDay(for: $0) })
+        guard let earliest = written.min() else { return 0 }
+
         let startOfToday = calendar.startOfDay(for: today)
-        var expected = startOfToday
-        if !days.contains(startOfToday) {
-            let yesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
-            guard days.contains(yesterday) else { return 0 }
-            expected = yesterday
+        // Not having written *yet today* was already never a break.
+        var cursor = startOfToday
+        if !written.contains(startOfToday) {
+            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday),
+                  written.contains(yesterday) else { return 0 }
+            cursor = yesterday
         }
+
         var streak = 0
-        for day in days.sorted(by: >) {
-            if calendar.isDate(day, inSameDayAs: expected) {
+        var daysWalked = 0
+        var lastForgivenAt: Int?
+
+        while cursor >= earliest {
+            if written.contains(cursor) {
                 streak += 1
-                expected = calendar.date(byAdding: .day, value: -1, to: expected) ?? expected
-            } else if day < expected {
-                break
+            } else {
+                let sinceLastForgiveness = lastForgivenAt.map { daysWalked - $0 } ?? .max
+                guard sinceLastForgiveness >= forgivenessWindowDays else { break }
+                lastForgivenAt = daysWalked
             }
+            daysWalked += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = previous
         }
         return streak
     }

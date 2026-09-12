@@ -24,6 +24,10 @@ struct SottoApp: App {
             // Reading the theme here registers observation at the root, so a
             // theme change re-renders the whole tree with new accent colors.
             .tint(themeManager.current.accent)
+            // Applied under the lock overlay so a banner can never sit on top
+            // of the lock screen. Covers and sheets add their own — see
+            // `feedbackOverlay()`.
+            .feedbackOverlay()
             .overlay {
                 if lockManager.isLocked {
                     LockScreenView(lockManager: lockManager)

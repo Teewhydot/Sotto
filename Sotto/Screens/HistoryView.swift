@@ -9,7 +9,6 @@ struct HistoryView: View {
     @State private var searchText = ""
     @State private var selectedFilter = "All"
     @State private var pendingDelete: JournalEntry?
-    @State private var deleteErrorMessage: String?
     let filters = ["All", "Voice", "Text", "Favourites"]
 
     var filteredEntries: [JournalEntry] {
@@ -136,30 +135,31 @@ struct HistoryView: View {
                 }
                 Button("Delete", role: .destructive) {
                     if let entry = pendingDelete {
-                        Haptics.warning()
-                        modelContext.delete(entry)
-                        do {
-                            try modelContext.save()
-                        } catch {
-                            deleteErrorMessage = "The entry couldn't be deleted: \(error.localizedDescription)"
-                        }
+                        delete(entry)
                     }
                     pendingDelete = nil
                 }
             } message: {
                 Text("This entry will be permanently deleted.")
             }
-            .alert(
-                "Something went wrong",
-                isPresented: Binding(
-                    get: { deleteErrorMessage != nil },
-                    set: { if !$0 { deleteErrorMessage = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(deleteErrorMessage ?? "")
-            }
+        }
+    }
+
+    private func delete(_ entry: JournalEntry) {
+        modelContext.delete(entry)
+        do {
+            try modelContext.save()
+            FeedbackCenter.shared.success("Entry deleted")
+        } catch {
+            // Staged deletes live in the context until `save()` succeeds —
+            // roll back so the row the user still sees is a real entry.
+            modelContext.rollback()
+            FeedbackCenter.shared.error(
+                "Couldn't delete this entry",
+                error,
+                retryLabel: "Try Again",
+                retry: { delete(entry) }
+            )
         }
     }
 }
