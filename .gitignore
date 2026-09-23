@@ -23,3 +23,7 @@ Sotto/Secrets.xcconfig
 
 # macOS
 .DS_Store
+
+# Brag outputs
+brag/
+brag-output/
